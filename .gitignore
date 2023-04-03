@@ -20,7 +20,7 @@ source_gen.caches
 .DS_Store
 .idea/uiDesigner.xml
 
-/modelix.version
+/version.txt
 **/.mps/cloudResources.xml
 
 !/projector-user-home/**/*

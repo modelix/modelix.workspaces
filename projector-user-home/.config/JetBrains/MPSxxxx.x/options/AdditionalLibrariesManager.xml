@@ -1,0 +1,32 @@
+<application>
+    <component name="AdditionalLibrariesManager">
+        <option name="libraries">
+            <map>
+                <entry key="packaged-languages-user">
+                    <value>
+                        <Library>
+                            <option name="name" value="packaged-languages-user" />
+                            <option name="path" value="$USER_HOME$/mps-languages" />
+                        </Library>
+                    </value>
+                </entry>
+                <entry key="packaged-languages">
+                    <value>
+                        <Library>
+                            <option name="name" value="packaged-languages" />
+                            <option name="path" value="/mps-languages" />
+                        </Library>
+                    </value>
+                </entry>
+                <entry key="workspace">
+                    <value>
+                        <Library>
+                            <option name="name" value="workspace" />
+                            <option name="path" value="$USER_HOME$/workspace.zip/" />
+                        </Library>
+                    </value>
+                </entry>
+            </map>
+        </option>
+    </component>
+</application>

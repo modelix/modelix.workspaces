@@ -17,16 +17,6 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '11'
-    - uses: actions/cache@v2.1.5
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: gradle-assembleWholeProject-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          gradle-assembleWholeProject-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          gradle-assembleWholeProject-
-          gradle-
     - name: Assemble
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,4 +32,3 @@ jobs:
         path: |
           */build/test-results
           */build/reports      
-          build/test.org.modelix/TEST-jetbrains.mps.testbench.junit.suites.AntModuleTestSuite0-all.xml          

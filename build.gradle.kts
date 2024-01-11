@@ -5,6 +5,7 @@ plugins {
 }
 
 version = computeVersion()
+description = "Components to run MPS in the cloud with Kubernetes"
 
 fun computeVersion(): Any {
     val versionFile = file("workspaces-version.txt")

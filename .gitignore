@@ -102,3 +102,6 @@ gradle-app.setting
 
 # Ignore our version file
 /workspaces-version.txt
+
+
+/node_modules/

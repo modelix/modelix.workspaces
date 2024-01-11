@@ -1,0 +1,13 @@
+branches:
+  - "main"
+# The default would be v${version} e.g. v1.0.0.
+# We want 1.0.0.
+# This makes processing the version later easier.
+tagFormat: "${version}"
+# The default plugin configuration contains "@semantic-release/npm";
+# https://github.com/semantic-release/semantic-release/blob/f31d43c429241144bdb8ecb4af87a91657b5b4bc/docs/usage/configuration.md#plugins
+# We do not want that plugin.
+plugins:
+  - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - "@semantic-release/github"

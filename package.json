@@ -1,0 +1,6 @@
+{
+  "name": "modelix.workspaces",
+  "devDependencies": {
+    "semantic-release": "^22.0.12"
+  }
+}

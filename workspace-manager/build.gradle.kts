@@ -25,7 +25,7 @@ dependencies {
     implementation(libs.kaml)
     implementation(libs.kotlinx.coroutines.core)
 
-    implementation(libs.kubernetes.client.v18)
+    implementation(libs.kubernetes.client)
     implementation(libs.jgit)
     implementation(libs.maven.invoker)
     implementation(libs.zt.zip)

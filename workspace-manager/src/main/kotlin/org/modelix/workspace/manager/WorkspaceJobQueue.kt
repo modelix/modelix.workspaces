@@ -77,8 +77,10 @@ class WorkspaceJobQueue {
         val expectedJobs: Map<String, Job> = synchronized(workspaceHash2job) {
             workspaceHash2job.values.associateBy { it.kubernetesJobName }
         }
-        val existingJobs: Map<String?, V1Job> = BatchV1Api().listNamespacedJob(KUBERNETES_NAMESPACE, null, null, null, null, null, null, null, null, null, null)
-            .items.filter { it.metadata?.name?.startsWith(JOB_PREFIX) == true }.associateBy { it.metadata?.name }
+        val existingJobs: Map<String?, V1Job> = BatchV1Api()
+            .listNamespacedJob(KUBERNETES_NAMESPACE, null, null, null, null, null, null, null, null, null, null, false)
+            .items.filter { it.metadata?.name?.startsWith(JOB_PREFIX) == true }
+            .associateBy { it.metadata?.name }
 
         val unexpected: Map<String?, V1Job> = existingJobs - expectedJobs.keys
         for (toRemove in unexpected) {
@@ -104,7 +106,8 @@ class WorkspaceJobQueue {
     private fun getPodLogs(podNamePrefix: String): String {
         try {
             val coreApi = CoreV1Api()
-            val pods = coreApi.listNamespacedPod(KUBERNETES_NAMESPACE, null, null, null, null, null, null, null, null, null, null)
+            val pods = coreApi
+                .listNamespacedPod(KUBERNETES_NAMESPACE, null, null, null, null, null, null, null, null, null, null, false)
             val matchingPods = pods.items.filter { it.metadata!!.name!!.startsWith(podNamePrefix) }
             return matchingPods.map { pod ->
                 try {

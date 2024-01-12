@@ -21,11 +21,12 @@ import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.kubernetes.client.openapi.models.V1Event
+import io.kubernetes.client.openapi.models.CoreV1Event
 import kotlinx.html.*
-import org.joda.time.DateTime
 import org.json.JSONArray
 import org.modelix.workspaces.WorkspaceHash
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 
 fun Application.adminModule() {
     install(Routing)
@@ -213,7 +214,7 @@ fun Application.adminModule() {
         get("log/{instanceId}/events") {
             val instanceId = call.parameters["instanceId"]!!
             val events = DeploymentManager.INSTANCE.getEvents(instanceId)
-            val eventTime: (V1Event)-> DateTime? = {
+            val eventTime: (CoreV1Event) -> OffsetDateTime? = {
                 listOfNotNull(
                     it.eventTime,
                     it.lastTimestamp,
@@ -224,7 +225,8 @@ fun Application.adminModule() {
             val json = JSONArray()
             for (event in events) {
                 val row = JSONArray()
-                row.put(eventTime(event)?.toLocalTime()?.toString("HH:mm:ss") ?: "---")
+                // Format time as HH:mm:ss
+                row.put(eventTime(event)?.format(DateTimeFormatter.ISO_LOCAL_TIME) ?: "---")
                 row.put(event.type)
                 row.put(event.reason)
                 row.put(event.message)

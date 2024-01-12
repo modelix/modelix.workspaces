@@ -40,7 +40,7 @@ dependencies {
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.html.builder)
     implementation(libs.kotlin.logging)
-    implementation(libs.kubernetes.client.v8)
+    implementation(libs.kubernetes.client)
     implementation(libs.commons.io)
     implementation(libs.commons.lang3)
     implementation(libs.json)

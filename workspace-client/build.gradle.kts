@@ -3,10 +3,10 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 description = "Downloads modules from a workspace before starting MPS"
 
 plugins {
-    kotlin("jvm")
-    kotlin("plugin.serialization")
-    id("application")
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    application
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.shadow)
 }
 
 application {

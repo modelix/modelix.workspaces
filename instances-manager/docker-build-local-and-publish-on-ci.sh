@@ -3,6 +3,8 @@
 set -e
 set -x
 
+cd "$(dirname "$0")"
+
 MODELIX_WORKSPACES_VERSION="$(cat ../workspaces-version.txt)"
 
 if [ "${CI}" = "true" ]; then

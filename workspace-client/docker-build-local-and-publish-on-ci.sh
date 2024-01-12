@@ -3,6 +3,8 @@
 set -e
 set -x
 
+cd "$(dirname "$0")"
+
 getProperty() {
    PROPERTY_KEY=$1
    PROPERTY_VALUE=$(grep "$PROPERTY_KEY" < ../gradle.properties | cut -d'=' -f2)

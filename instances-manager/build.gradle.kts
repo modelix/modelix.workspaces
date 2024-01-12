@@ -10,7 +10,7 @@ group = "org.modelix"
 description = "Starts a separate MPS instance for each user"
 
 application {
-    mainClass.set("org.modelix.workspace.client.MainKt")
+    mainClass.set("org.modelix.instancesmanager.Main")
 }
 
 repositories {

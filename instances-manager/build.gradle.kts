@@ -1,7 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
-    java
+    application
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.shadow)
 }
@@ -9,12 +9,9 @@ plugins {
 group = "org.modelix"
 description = "Starts a separate MPS instance for each user"
 
-tasks.named<JavaCompile>("compileJava") {
-    sourceCompatibility = "11"
-    targetCompatibility = "11"
+application {
+    mainClass.set("org.modelix.workspace.client.MainKt")
 }
-
-defaultTasks.add("build")
 
 repositories {
     mavenCentral()
@@ -50,8 +47,4 @@ dependencies {
     implementation(libs.auth0.jwt)
 
     runtimeOnly(libs.slf4j.simple)
-}
-
-tasks.named("assemble") {
-    dependsOn("shadowJar")
 }

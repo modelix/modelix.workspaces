@@ -399,6 +399,11 @@ class DeploymentManager {
             service.metadata!!.managedFields = null
             service.metadata!!.uid = null
             service.metadata!!.resourceVersion(null)
+            // The "template" service got assigned cluster IPs.
+            // We do not want to use them for the service we are going to create.
+            // Therefore, we are resetting them.
+            // Leaving them would result in Kubernetes refusing to create the new service.
+            service.spec!!.clusterIPs = null
             service.spec!!.clusterIP = null
             service.spec!!.ports!!.forEach(Consumer { p: V1ServicePort -> p.nodePort(null) })
             service.status = null

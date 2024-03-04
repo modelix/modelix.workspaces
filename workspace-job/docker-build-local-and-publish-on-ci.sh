@@ -28,9 +28,6 @@ for MPS_MAJOR_VERSION in $(getProperty mpsMajorVersions | tr "," "\n"); do
       --push \
       --build-arg MPS_MAJOR_VERSION=${MPS_MAJOR_VERSION}\
       -t "modelix/modelix-workspace-job:${TAG}" .
-
-    # avoid running out of disk space on the github actions runner
-    docker rm "modelix/modelix-workspace-job:${TAG}"
   else
     docker build \
       --build-arg MPS_MAJOR_VERSION=${MPS_MAJOR_VERSION}\

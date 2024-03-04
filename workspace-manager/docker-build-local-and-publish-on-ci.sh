@@ -12,9 +12,6 @@ if [ "${CI}" = "true" ]; then
     --platform linux/amd64,linux/arm64 \
     --push \
     -t "modelix/modelix-workspace-manager:${MODELIX_WORKSPACES_VERSION}" .
-
-  # avoid running out of disk space on the github actions runner
-  docker rm "modelix/modelix-workspace-manager:${MODELIX_WORKSPACES_VERSION}"
 else
   docker build \
     -t "modelix/modelix-workspace-manager:${MODELIX_WORKSPACES_VERSION}" .

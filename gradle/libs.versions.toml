@@ -50,7 +50,7 @@ modelix-authorization = { group = "org.modelix", name = "authorization", version
 modelix-model-client = { group = "org.modelix", name = "model-client", version.ref = "modelix-core" }
 modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.1.0"}
 slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version = "2.0.6" }
-zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.14" }
+zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }
 modelix-mpsPlugins-legacySync = { group = "org.modelix.mps", name = "legacy-sync-plugin", version.ref = "modelix-mps-plugins" }
 modelix-mpsPlugins-generator = { group = "org.modelix.mps", name = "generator-execution-plugin", version.ref = "modelix-mps-plugins" }
 modelix-mpsPlugins-diff = { group = "org.modelix.mps", name = "diff-plugin", version.ref = "modelix-mps-plugins" }

@@ -15,13 +15,13 @@ MODELIX_WORKSPACES_VERSION="$(cat ../workspaces-version.txt)"
 
 # Create a workspace-client image for each MPS version
 for MPS_MAJOR_VERSION in $(getProperty mpsMajorVersions | tr "," "\n"); do
-  MODELIX_MPS_COMPONENTS_VERSION=$(getProperty modelixMpsComponentsVersion"$MPS_MAJOR_VERSION")
+  MODELIX_MPS_COMPONENTS_VERSION=$(getProperty mpsVersion"$MPS_MAJOR_VERSION")
   TAG=${MODELIX_WORKSPACES_VERSION}-${MPS_MAJOR_VERSION}
   if [ "${CI}" = "true" ]; then
     docker buildx build \
       --platform linux/amd64 \
       --push \
-      --build-arg MODELIX_MPS_COMPONENTS_VERSION=${MODELIX_MPS_COMPONENTS_VERSION} \
+      --build-arg MPS_VERSION=${MPS_MAJOR_VERSION} \
       -t "modelix/modelix-workspace-client:${TAG}" .
   # Only linux/amd64 (especially not linux/arm64)  is not supported
   # Therefore build image with platform linux/amd64
@@ -29,11 +29,11 @@ for MPS_MAJOR_VERSION in $(getProperty mpsMajorVersions | tr "," "\n"); do
   elif [ "$(uname -m)" != "x86_64" ]; then
         docker buildx build \
           --platform linux/amd64 \
-          --build-arg MODELIX_MPS_COMPONENTS_VERSION=${MODELIX_MPS_COMPONENTS_VERSION} \
+          --build-arg MPS_VERSION=${MPS_MAJOR_VERSION} \
           -t "modelix/modelix-workspace-client:${TAG}" .
   else
     docker build \
-      --build-arg MODELIX_MPS_COMPONENTS_VERSION=${MODELIX_MPS_COMPONENTS_VERSION}\
+      --build-arg MPS_VERSION=${MPS_MAJOR_VERSION} \
       -t "modelix/modelix-workspace-client:${TAG}" .
   fi
 done

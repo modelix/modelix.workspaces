@@ -18,6 +18,20 @@ tasks.withType<ShadowJar> {
     archiveVersion.set("latest")
 }
 
+// <editor-fold desc="IDEA plugins">
+val modelixIdeaPlugins: Configuration by configurations.creating
+dependencies {
+    modelixIdeaPlugins(libs.bundles.modelix.mpsPlugins.all)
+}
+val copyMpsPlugins by tasks.registering(Sync::class) {
+    from(modelixIdeaPlugins.resolve().map { zipTree(it) })
+    into(project.layout.buildDirectory.dir("mps-plugins"))
+}
+tasks.assemble {
+    dependsOn(copyMpsPlugins)
+}
+// </editor-fold>
+
 dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)

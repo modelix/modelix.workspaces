@@ -15,7 +15,6 @@ MODELIX_WORKSPACES_VERSION="$(cat ../workspaces-version.txt)"
 
 # Create a workspace-client image for each MPS version
 for MPS_MAJOR_VERSION in $(getProperty mpsMajorVersions | tr "," "\n"); do
-  MODELIX_MPS_COMPONENTS_VERSION=$(getProperty mpsVersion"$MPS_MAJOR_VERSION")
   TAG=${MODELIX_WORKSPACES_VERSION}-${MPS_MAJOR_VERSION}
   if [ "${CI}" = "true" ]; then
     docker buildx build \

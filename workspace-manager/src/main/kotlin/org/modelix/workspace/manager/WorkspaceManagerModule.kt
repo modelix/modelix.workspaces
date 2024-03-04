@@ -120,14 +120,15 @@ fun Application.workspaceManagerModule() {
                                                     text((workspace?.name ?: "<no name>") + " ($workspaceId)")
                                                 }
                                             }
-                                            td {
-                                                if (canRead) {
-                                                    a {
-                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/project"
-                                                        text("Open Web Interface")
-                                                    }
-                                                }
-                                            }
+                                            // Shadow models based UI was removed
+//                                            td {
+//                                                if (canRead) {
+//                                                    a {
+//                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/project"
+//                                                        text("Open Web Interface")
+//                                                    }
+//                                                }
+//                                            }
                                             td {
                                                 if (canRead) {
                                                     a {
@@ -332,9 +333,10 @@ fun Application.workspaceManagerModule() {
                                 div("menuItem") {
                                     a("../${workspaceAndHash.hash().hash}/buildlog") { +"Build Log" }
                                 }
-                                div("menuItem") {
-                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/project") { +"Open Web Interface" }
-                                }
+                                // Shadow models based UI was removed
+//                                div("menuItem") {
+//                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/project") { +"Open Web Interface" }
+//                                }
                                 div("menuItem") {
                                     a("../../${workspaceInstanceUrl(workspaceAndHash)}/ide/") { +"Open MPS" }
                                 }

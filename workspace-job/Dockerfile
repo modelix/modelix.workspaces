@@ -8,7 +8,7 @@ COPY build/install/workspace-job /workspace-job/
 ARG MPS_MAJOR_VERSION
 COPY build/mps$MPS_MAJOR_VERSION/artifacts/mps /mps
 
-COPY build/mps$MPS_MAJOR_VERSION/artifacts/de.itemis.mps.extensions /languages/mps-extensions
-COPY build/mps$MPS_MAJOR_VERSION/artifacts/org.modelix /languages/modelix/plugins
+#COPY build/mps$MPS_MAJOR_VERSION/artifacts/de.itemis.mps.extensions /languages/mps-extensions
+#COPY build/mps$MPS_MAJOR_VERSION/artifacts/org.modelix /languages/modelix/plugins
 
 CMD ["/workspace-job/bin/workspace-job", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5071", "-Dmps.home=/mps", "-XX:MaxRAMPercentage=75"]

@@ -20,8 +20,8 @@ fun computeVersion(): Any {
 
 subprojects {
     repositories {
-        // It is useful to have the central maven repo before the Itemis's one as it is more reliable
-        mavenCentral()
+        mavenLocal()
         maven { url = uri("https://artifacts.itemis.cloud/repository/maven-mps/") }
+        mavenCentral()
     }
 }

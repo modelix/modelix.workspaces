@@ -30,7 +30,7 @@ dependencies {
 val mpsMajorVersions = providers.gradleProperty("mpsMajorVersions").get().split(",")
 
 mpsMajorVersions.forEach { mpsMajorVersion ->
-    val artifactsDir = layout.buildDirectory.dir("mps$mpsMajorVersion/artifacts")
+    val targetDir = layout.buildDirectory.dir("mps$mpsMajorVersion")
 
     val mps = configurations.create("mps$mpsMajorVersion")
     val mpsVersion = providers.gradleProperty("mpsVersion$mpsMajorVersion").get()
@@ -39,13 +39,13 @@ mpsMajorVersions.forEach { mpsMajorVersion ->
         mps("com.jetbrains:mps:$mpsVersion")
     }
 
-    val resolveMps = tasks.register("resolveMps$mpsMajorVersion", Copy::class) {
+    val resolveMps = tasks.register("resolveMps$mpsMajorVersion", Sync::class) {
         from(mps.resolve().map { zipTree(it) })
-        into(artifactsDir.map { it.dir("mps") })
+        into(targetDir)
     }
 
-    tasks.assemble {
-        dependsOn(resolveMps)
+    val deleteMps = tasks.register("deleteMps$mpsMajorVersion", Delete::class) {
+        delete(targetDir)
     }
 }
 

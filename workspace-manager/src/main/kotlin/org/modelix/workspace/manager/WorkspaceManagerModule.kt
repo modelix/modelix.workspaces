@@ -147,6 +147,22 @@ fun Application.workspaceManagerModule() {
                                             }
                                             td {
                                                 if (canRead) {
+                                                    a {
+                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/generator/"
+                                                        text("Generator")
+                                                    }
+                                                }
+                                                for (sharedInstance in workspace.sharedInstances) {
+                                                    if (sharedInstance.allowWrite && !canWrite) continue
+                                                    br {}
+                                                    a {
+                                                        href = "../${workspaceInstanceUrl(workspaceAndHash, sharedInstance)}/generator/"
+                                                        text("Generator [${sharedInstance.name}]")
+                                                    }
+                                                }
+                                            }
+                                            td {
+                                                if (canRead) {
                                                     workspace.gitRepositories.forEachIndexed { index, gitRepository ->
                                                         a {
                                                             href = "$workspaceId/git/$index/"
@@ -339,6 +355,9 @@ fun Application.workspaceManagerModule() {
 //                                }
                                 div("menuItem") {
                                     a("../../${workspaceInstanceUrl(workspaceAndHash)}/ide/") { +"Open MPS" }
+                                }
+                                div("menuItem") {
+                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/generator/") { +"Generator" }
                                 }
                                 workspace.gitRepositories.forEachIndexed { index, gitRepository ->
                                     div("menuItem") {

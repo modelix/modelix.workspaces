@@ -22,7 +22,7 @@
                     <value>
                         <Library>
                             <option name="name" value="workspace" />
-                            <option name="path" value="$USER_HOME$/workspace.zip/" />
+                            <option name="path" value="$USER_HOME$/workspace.zip" />
                         </Library>
                     </value>
                 </entry>

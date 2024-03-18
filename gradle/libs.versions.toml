@@ -48,7 +48,7 @@ logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.
 maven-invoker = { group = "org.apache.maven.shared", name = "maven-invoker", version = "3.2.0" }
 modelix-authorization = { group = "org.modelix", name = "authorization", version.ref = "modelix-core" }
 modelix-model-client = { group = "org.modelix", name = "model-client", version.ref = "modelix-core" }
-modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.3.0"}
+modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.4.0"}
 slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version = "2.0.12" }
 zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }
 modelix-mpsPlugins-legacySync = { group = "org.modelix.mps", name = "legacy-sync-plugin", version.ref = "modelix-mps-plugins" }

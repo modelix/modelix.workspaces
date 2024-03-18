@@ -33,12 +33,12 @@ class RedirectedURL(
     fun getRedirectedUrl(websocket: Boolean): String {
         var url = (if (websocket) "ws" else "http") + "://"
         url += if (instanceName != null) instanceName?.name else workspaceReference
-        url += if (remainingPath.startsWith("/ide/")) {
+        url += if (remainingPath.startsWith("/ide")) {
             ":8887" + remainingPath.substring("/ide".length)
-        } else if (remainingPath.startsWith("/generator/")) {
+        } else if (remainingPath.startsWith("/generator")) {
             // see https://github.com/modelix/modelix.mps-plugins/blob/bb70966087e2f41c263a7fe4d292e4722d50b9d1/mps-generator-execution-plugin/src/main/kotlin/org/modelix/mps/generator/web/GeneratorExecutionServer.kt#L78
             ":33335" + remainingPath.substring("/generator".length)
-        } else if (remainingPath.startsWith("/diff/")) {
+        } else if (remainingPath.startsWith("/diff")) {
             // see https://github.com/modelix/modelix.mps-plugins/blob/bb70966087e2f41c263a7fe4d292e4722d50b9d1/mps-diff-plugin/src/main/kotlin/org/modelix/ui/diff/DiffServer.kt#L82
             ":33334" + remainingPath.substring("/diff".length)
         } else {

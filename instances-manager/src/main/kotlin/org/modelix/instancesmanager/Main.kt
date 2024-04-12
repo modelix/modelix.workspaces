@@ -60,19 +60,19 @@ object Main {
             }
 
             override fun redirect(request: ServletUpgradeRequest): URI? {
-                val redirectedURL: RedirectedURL = DeploymentManager.INSTANCE.redirect(null, request.httpServletRequest)
-                    ?: return null
+                val redirectedURL = DeploymentManager.INSTANCE.redirect(null, request.httpServletRequest)
+                val urlToRedirectTo = redirectedURL?.getURLToRedirectTo(true)
                 return try {
-                    URI(redirectedURL.getRedirectedUrl(true))
+                    urlToRedirectTo?.let { URI(it) }
                 } catch (e: URISyntaxException) {
                     throw RuntimeException(e)
                 }
             }
 
             override fun rewriteTarget(clientRequest: HttpServletRequest): String? {
-                val redirectedURL: RedirectedURL = DeploymentManager.INSTANCE.redirect(null, clientRequest)
-                    ?: return null
-                return redirectedURL.getRedirectedUrl(false)
+                val redirectedURL = DeploymentManager.INSTANCE.redirect(null, clientRequest)
+                val urlToRedirectTo = redirectedURL?.getURLToRedirectTo(false)
+                return urlToRedirectTo
             }
         }
         val proxyHandlerCondition: HandlerWrapper = object : HandlerWrapper() {

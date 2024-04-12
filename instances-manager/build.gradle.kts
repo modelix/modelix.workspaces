@@ -47,4 +47,10 @@ dependencies {
     implementation(libs.auth0.jwt)
 
     runtimeOnly(libs.slf4j.simple)
+
+    testImplementation(kotlin("test"))
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

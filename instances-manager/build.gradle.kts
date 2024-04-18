@@ -30,7 +30,6 @@ dependencies {
     implementation(libs.jetty.websocket.client)
     implementation(libs.jetty.websocket.server)
     implementation(libs.jgit)
-    implementation(libs.kohsuke.github.api)
     implementation(libs.modelix.model.client)
     implementation(project(":workspaces"))
     implementation(libs.modelix.authorization)

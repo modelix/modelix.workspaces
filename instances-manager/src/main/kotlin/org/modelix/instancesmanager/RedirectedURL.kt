@@ -26,21 +26,27 @@ class RedirectedURL(
     var instanceName: InstanceName?,
     val userToken: AccessTokenPrincipal?
 ) {
-    fun noPersonalDeployment() {
-        instanceName = null
-    }
 
-    fun getRedirectedUrl(websocket: Boolean): String {
+    fun getURLToRedirectTo(websocket: Boolean): String? {
         var url = (if (websocket) "ws" else "http") + "://"
         url += if (instanceName != null) instanceName?.name else workspaceReference
-        url += if (remainingPath.startsWith("/ide/")) {
+        url += if (remainingPath.startsWith("/ide")) {
             ":8887" + remainingPath.substring("/ide".length)
-        } else if (remainingPath.startsWith("/generator/")) {
+        } else if (remainingPath.startsWith("/generator")) {
             // see https://github.com/modelix/modelix.mps-plugins/blob/bb70966087e2f41c263a7fe4d292e4722d50b9d1/mps-generator-execution-plugin/src/main/kotlin/org/modelix/mps/generator/web/GeneratorExecutionServer.kt#L78
             ":33335" + remainingPath.substring("/generator".length)
-        } else if (remainingPath.startsWith("/diff/")) {
+        } else if (remainingPath.startsWith("/diff")) {
             // see https://github.com/modelix/modelix.mps-plugins/blob/bb70966087e2f41c263a7fe4d292e4722d50b9d1/mps-diff-plugin/src/main/kotlin/org/modelix/ui/diff/DiffServer.kt#L82
             ":33334" + remainingPath.substring("/diff".length)
+        } else if (remainingPath.startsWith("/port/")) {
+            val matchResults = PORT_MATCHER.matchEntire(remainingPath) ?: return null
+            val portString = matchResults.groupValues[1]
+            val portNumber = portString.toInt()
+            if (portNumber > HIGHEST_VALID_PORT_NUMBER) {
+                return null
+            }
+            val pathAfterPort = matchResults.groupValues[2]
+            ":$portString$pathAfterPort"
         } else {
             ":33333$remainingPath"
         }
@@ -48,7 +54,8 @@ class RedirectedURL(
     }
 
     companion object {
-        const val COOKIE_NAME = "modelix-mps-instance"
+        private const val HIGHEST_VALID_PORT_NUMBER = 65535
+        private val PORT_MATCHER = Regex("/port/(\\d{1,5})(/.*)?")
         fun redirect(baseRequest: Request?, request: HttpServletRequest): RedirectedURL? {
             var remainingPath = request.requestURI
             if (!remainingPath.startsWith("/")) return null

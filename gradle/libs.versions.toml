@@ -1,6 +1,6 @@
 [versions]
 jetty = "9.4.54.v20240208"
-junit = "5.10.2"
+junit = "5.10.3"
 kotlin = "1.9.23"
 kotlinx-coroutines = "1.8.1"
 kotlin-logging = "3.0.5"

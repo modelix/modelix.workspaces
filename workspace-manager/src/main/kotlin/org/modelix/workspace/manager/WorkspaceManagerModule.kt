@@ -43,7 +43,9 @@ import java.util.zip.ZipOutputStream
 
 fun Application.workspaceManagerModule() {
 
-    val manager = WorkspaceManager()
+
+    val credentialsEncryption = createCredentialEncryption()
+    val manager = WorkspaceManager(credentialsEncryption)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
     install(Routing)
@@ -259,7 +261,8 @@ fun Application.workspaceManagerModule() {
                             return@intercept
                         }
                         val repo = repos[repoIndex]
-                        val repoManager = GitRepositoryManager(repo, manager.getWorkspaceDirectory(workspace))
+                        val gitRepoWitDecryptedCredentials = credentialsEncryption.copyWithDecryptedCredentials(repo)
+                        val repoManager = GitRepositoryManager(gitRepoWitDecryptedCredentials, manager.getWorkspaceDirectory(workspace))
                         if (!repoManager.repoDirectory.exists()) {
                             repoManager.updateRepo()
                         }
@@ -728,13 +731,7 @@ fun Application.workspaceManagerModule() {
                     val decryptCredentials = call.request.queryParameters["decryptCredentials"] == "true"
                     val decrypted = if (decryptCredentials) {
                         // TODO check permission to read decrypted credentials
-                        workspace.copy(
-                            gitRepositories = workspace.gitRepositories.map {
-                                it.copy(
-                                    credentials = it.credentials?.decrypt()
-                                )
-                            }
-                        )
+                        credentialsEncryption.copyWithDecryptedCredentials(workspace)
                     } else {
                         workspace
                     }
@@ -755,7 +752,8 @@ fun Application.workspaceManagerModule() {
                         return@get
                     }
 
-                    val gitRepoManager = GitRepositoryManager(gitRepo, manager.getWorkspaceDirectory(workspace))
+                    val gitRepoWitDecryptedCredentials = credentialsEncryption.copyWithDecryptedCredentials(gitRepo)
+                    val gitRepoManager = GitRepositoryManager(gitRepoWitDecryptedCredentials, manager.getWorkspaceDirectory(workspace))
                     gitRepoManager.updateRepo()
                     call.respondOutputStream(ContentType.Application.Zip) {
                         ZipOutputStream(this).use { zip ->
@@ -873,6 +871,15 @@ fun Application.workspaceManagerModule() {
         allowMethod(HttpMethod.Put)
         allowMethod(HttpMethod.Post)
     }
+}
+
+private fun createCredentialEncryption(): CredentialsEncryption {
+    // Secrets mounted as files are more secure than environment variables
+    // because environment variables can more easily leak or be extracted.
+    // See https://stackoverflow.com/questions/51365355/kubernetes-secrets-volumes-vs-environment-variables
+    val credentialsEncryptionKeyFile = File("/secrets/workspacesecret/workspace-credentials-key.txt")
+    val credentialsEncryptionKey = credentialsEncryptionKeyFile.readLines().first()
+    return CredentialsEncryption(credentialsEncryptionKey)
 }
 
 private fun findGitRepo(folder: File): File? {

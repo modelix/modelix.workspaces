@@ -28,7 +28,7 @@ val workspaceListResource = KeycloakResourceType("list", setOf(KeycloakScope.ADD
     .createInstance("workspace-list")
 val workspaceUploadResourceType = KeycloakResourceType("workspace-upload", setOf(KeycloakScope.READ, KeycloakScope.DELETE), createByUser = true)
 
-class WorkspacePersistence() {
+class WorkspacePersistence {
     private val WORKSPACE_LIST_KEY = "workspaces"
     private val modelClient: RestWebModelClient = RestWebModelClient(getModelServerUrl(), authTokenProvider = serviceAccountTokenProvider)
 
@@ -105,7 +105,6 @@ class WorkspacePersistence() {
         require(mpsVersion == null || mpsVersion.matches(Regex("""20\d\d\.\d"""))) {
             "Invalid major MPS version: '$mpsVersion'. Examples for valid values: '2020.3', '2021.1', '2021.2'."
         }
-        workspace.gitRepositories.forEach { it.credentials = it.credentials?.encrypt() }
         val id = workspace.id
         val json = Json.encodeToString(workspace)
         val hash = WorkspaceHash(HashUtil.sha256(json))

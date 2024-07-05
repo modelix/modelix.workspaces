@@ -26,7 +26,6 @@ import org.eclipse.jgit.transport.http.JDKHttpConnection
 import org.eclipse.jgit.transport.http.JDKHttpConnectionFactory
 import org.modelix.workspaces.GitRepository
 import java.io.File
-import java.io.OutputStream
 import java.net.*
 import java.util.zip.ZipOutputStream
 
@@ -64,14 +63,13 @@ class GitRepositoryManager(val config: GitRepository, val workspaceDirectory: Fi
     }
 
     private fun <C : GitCommand<T>, T, E : TransportCommand<C, T>> applyCredentials(cmd: E): E {
-        val encryptedCredentials = config.credentials
-        if (encryptedCredentials != null) {
-            val decrypted = encryptedCredentials.decrypt()
-            cmd.setCredentialsProvider(UsernamePasswordCredentialsProvider(decrypted.user, decrypted.password))
+        val credentials = config.credentials
+        if (credentials != null) {
+            cmd.setCredentialsProvider(UsernamePasswordCredentialsProvider(credentials.user, credentials.password))
             cmd.setTransportConfigCallback { transport ->
                 transport?.setAuthenticator(object : Authenticator() {
                     override fun getPasswordAuthentication(): PasswordAuthentication {
-                        return PasswordAuthentication(decrypted.user, decrypted.password.toCharArray())
+                        return PasswordAuthentication(credentials.user, credentials.password.toCharArray())
                     }
                 })
             }

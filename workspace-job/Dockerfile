@@ -1,5 +1,5 @@
-ARG JAVA_VERSION
-FROM eclipse-temurin:$JAVA_VERSION
+ARG JAVA_IMAGE
+FROM $JAVA_IMAGE
 
 RUN apt update && apt install -y maven git ant
 

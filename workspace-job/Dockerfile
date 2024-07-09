@@ -1,4 +1,5 @@
-FROM openjdk:11
+ARG JAVA_VERSION
+FROM eclipse-temurin:$JAVA_VERSION
 
 RUN apt update && apt install -y maven git ant
 

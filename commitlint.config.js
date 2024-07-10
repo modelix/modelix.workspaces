@@ -6,6 +6,10 @@ module.exports = {
       "always",
       [
         "deps",
+        "instances-manager",
+        "workspace-client",
+        "workspace-job",
+        "workspace-manager"
       ],
     ],
     "subject-case": [0, 'never'],

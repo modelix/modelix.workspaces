@@ -20,7 +20,7 @@ import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacePersistence
 import java.io.File
 
-class WorkspaceManager {
+class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption) {
     private val workspacePersistence = WorkspacePersistence()
     private val directory: File = run {
         // The workspace will contain git repositories. Avoid cloning them into an existing repository.
@@ -38,7 +38,8 @@ class WorkspaceManager {
 
     @Synchronized
     fun update(workspace: Workspace): WorkspaceHash {
-        val hash = workspacePersistence.update(workspace)
+        val workspaceWithEncryptedCredentials = credentialsEncryption.copyWithEncryptedCredentials(workspace)
+        val hash = workspacePersistence.update(workspaceWithEncryptedCredentials)
         synchronized(buildJobs) {
             buildJobs.removeByWorkspaceId(workspace.id)
             FileUtils.deleteQuietly(getDownloadFile(hash))

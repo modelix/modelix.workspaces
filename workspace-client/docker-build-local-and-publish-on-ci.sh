@@ -6,15 +6,16 @@ set -x
 cd "$(dirname "$0")"
 
 getProperty() {
-   PROPERTY_KEY=$1
-   PROPERTY_VALUE=$(grep "$PROPERTY_KEY" < ../gradle.properties | cut -d'=' -f2)
+   PROPERTY_FILE=$1
+   PROPERTY_KEY=$2
+   PROPERTY_VALUE=$(grep "$PROPERTY_KEY" < "$PROPERTY_FILE" | cut -d'=' -f2)
    echo "$PROPERTY_VALUE"
 }
 
 MODELIX_WORKSPACES_VERSION="$(cat ../workspaces-version.txt)"
 
 # Create a workspace-client image for each MPS version
-for MPS_MAJOR_VERSION in $(getProperty mpsMajorVersions | tr "," "\n"); do
+for MPS_MAJOR_VERSION in $(getProperty ../gradle.properties mpsMajorVersions | tr "," "\n"); do
   TAG=${MODELIX_WORKSPACES_VERSION}-${MPS_MAJOR_VERSION}
   if [ "${CI}" = "true" ]; then
     docker buildx build \

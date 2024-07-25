@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21.0.3_9-jdk@sha256:3d92c3222b9d376e420e7099054604dc0d7bafbebbcb4f79ffd77763cd6a1bcd
+FROM eclipse-temurin:21.0.4_7-jdk@sha256:b18dabf509aeeb700d9525cdebf6bdbededb06536c6e233a3a21e6fb04d2be8c
 
 WORKDIR /instances-manager/
 EXPOSE 33332

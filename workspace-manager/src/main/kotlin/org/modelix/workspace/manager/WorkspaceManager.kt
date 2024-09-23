@@ -14,10 +14,7 @@
 package org.modelix.workspace.manager
 
 import org.apache.commons.io.FileUtils
-import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.Workspace
-import org.modelix.workspaces.WorkspaceHash
-import org.modelix.workspaces.WorkspacePersistence
+import org.modelix.workspaces.*
 import java.io.File
 
 class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption) {

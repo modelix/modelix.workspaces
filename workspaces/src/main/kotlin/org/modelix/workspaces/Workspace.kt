@@ -54,7 +54,7 @@ data class WorkspaceAndHash(val workspace: Workspace, private val hash: Workspac
     fun uploadIds() = workspace.uploadIds()
 
     val userDefinedOrDefaultMpsVersion
-        get() = workspace.mpsVersion ?: DEFAULT_MPS_VERSION
+        get() = workspace.userDefinedOrDefaultMpsVersion
 
     val id = workspace.id
     val name = workspace.name
@@ -111,3 +111,26 @@ data class MavenRepository(val url: String)
 
 @Serializable
 data class SharedInstance(val name: String = "shared", val allowWrite: Boolean = false)
+
+val Workspace.userDefinedOrDefaultMpsVersion
+    get() = mpsVersion ?: DEFAULT_MPS_VERSION
+
+fun CredentialsEncryption.decryptGitCredentials(credentials: Credentials): Credentials {
+    return Credentials(decrypt(credentials.user), decrypt(credentials.password))
+}
+
+fun CredentialsEncryption.encryptGitCredentials(credentials: Credentials): Credentials {
+    return Credentials(encrypt(credentials.user), encrypt(credentials.password))
+}
+
+fun CredentialsEncryption.copyWithEncryptedCredentials(workspace: Workspace): Workspace =
+    workspace.copy(gitRepositories = workspace.gitRepositories.map(::copyWithEncryptedCredentials))
+
+fun CredentialsEncryption.copyWithDecryptedCredentials(workspace: Workspace): Workspace =
+    workspace.copy(gitRepositories = workspace.gitRepositories.map(::copyWithDecryptedCredentials))
+
+fun CredentialsEncryption.copyWithEncryptedCredentials(gitRepository: GitRepository): GitRepository =
+    gitRepository.copy(credentials = gitRepository.credentials?.run(::encryptGitCredentials))
+
+fun CredentialsEncryption.copyWithDecryptedCredentials(gitRepository: GitRepository): GitRepository =
+    gitRepository.copy(credentials = gitRepository.credentials?.run(::decryptGitCredentials))

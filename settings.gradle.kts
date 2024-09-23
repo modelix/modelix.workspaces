@@ -27,6 +27,9 @@ pluginManagement {
 rootProject.name = "modelix.workspaces"
 
 include("gitui")
+include("git-sync:checkout-step")
+include("git-sync:push-step")
+include("git-sync:update-step")
 include("instances-manager")
 include("workspace-client")
 include("workspace-job")

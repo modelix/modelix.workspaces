@@ -26,6 +26,7 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.jvm.javaio.*
+import kotlinx.coroutines.runBlocking
 import kotlinx.html.*
 import kotlinx.html.stream.createHTML
 import kotlinx.serialization.decodeFromString
@@ -35,6 +36,8 @@ import org.modelix.authorization.*
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
+import org.modelix.model.client2.ModelClientV2
+import org.modelix.workspace.manager.gitsync.*
 import org.modelix.workspaces.*
 import org.zeroturnaround.zip.ZipUtil
 import java.io.File
@@ -43,8 +46,17 @@ import java.util.zip.ZipOutputStream
 
 fun Application.workspaceManagerModule() {
 
+    val modelServerV2Url = getModelServerV2Url()
+    val modelClient = ModelClientV2.builder()
+        .url(modelServerV2Url)
+        .authToken(serviceAccountTokenProvider)
+        .build()
+    runBlocking {
+        modelClient.init()
+    }
 
-    val credentialsEncryption = createCredentialEncryption()
+    val credentialsEncryption = createCredentialEncryptionFromKubernetesSecret()
+    val gitSyncJobService: IGitSyncJobService = KubernetesGitSyncJobService(modelServerV2Url, credentialsEncryption)
     val manager = WorkspaceManager(credentialsEncryption)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
@@ -99,7 +111,7 @@ fun Application.workspaceManagerModule() {
                                     tr {
                                         th { +"Workspace"}
                                         th {
-                                            colSpan="5"
+                                            colSpan="6"
                                             +"Actions"
                                         }
                                     }
@@ -182,6 +194,13 @@ fun Application.workspaceManagerModule() {
                                                 }
                                             }
                                             td {
+                                                // TODO MODELIX-597 Check permissions
+                                                a {
+                                                    href = "$workspaceId/sync-to-git/overview"
+                                                    text("Git Synchronization")
+                                                }
+                                            }
+                                            td {
                                                 if (canRead) {
                                                     a {
                                                         href = "../model/history/workspace_$workspaceId/master/"
@@ -208,7 +227,7 @@ fun Application.workspaceManagerModule() {
                                 if (KeycloakUtils.hasPermission(call.jwt()!!, workspaceListResource, KeycloakScope.ADD)) {
                                     tr {
                                         td {
-                                            colSpan = "6"
+                                            colSpan = "7"
                                             form {
                                                 action = "new"
                                                 method = FormMethod.post
@@ -710,6 +729,101 @@ fun Application.workspaceManagerModule() {
                     manager.deleteUpload(uploadId)
                     call.respondRedirect("./edit")
                 }
+
+                route("sync-to-git") {
+                    get("overview") {
+                        // TODO MODELIX-597 Check permissions
+                        val workspaceId = call.parameters["workspaceId"]
+                        if (workspaceId == null) {
+                            call.respond(HttpStatusCode.BadRequest, "Workspace ID is missing")
+                            return@get
+                        }
+                        val workspaceAndHash = manager.getWorkspaceForId(workspaceId)
+                        if (workspaceAndHash == null) {
+                            call.respond(HttpStatusCode.NotFound, "Workspace $workspaceId not found")
+                            return@get
+                        }
+                        val workspace = workspaceAndHash.workspace
+                        val gitSyncPageHTML = buildGitSyncPage(workspace, modelClient, gitSyncJobService)
+                        call.respondHtmlSafe(gitSyncPageHTML)
+                    }
+
+                    post("job") {
+                        // TODO MODELIX-597 Check permissions
+                        val workspaceId = call.parameters["workspaceId"]
+                        if (workspaceId == null) {
+                            call.respond(HttpStatusCode.BadRequest, "Workspace ID is missing")
+                            return@post
+                        }
+                        val workspaceAndHash = manager.getWorkspaceForId(workspaceId)
+                        if (workspaceAndHash == null) {
+                            call.respond(HttpStatusCode.NotFound, "Workspace $workspaceId not found")
+                            return@post
+                        }
+                        val formParameters = call.receiveParameters()
+                        // TODO MODELIX-597 Validate with proper error messages
+                        val version = formParameters["version"]!!
+                        val repository = formParameters["repository"]!!
+                        val username = formParameters["username"]!!
+                        val password = formParameters["password"]!!
+                        val sourceRef = formParameters["sourceRef"]!!
+                        val targetBranch = formParameters["targetBranch"]!!
+                        val jobConfiguration = JobConfiguration(
+                            version = version,
+                            repository = repository,
+                            sourceRef = sourceRef,
+                            targetBranch = targetBranch,
+                        )
+                        val jobCredentials = JobCredentials(
+                            username = username,
+                            password = password,
+                        )
+                        gitSyncJobService.createJob(workspaceAndHash.workspace, jobConfiguration, jobCredentials)
+                        call.respondRedirect("./overview")
+                    }
+
+                    // This is only a POST so that we can use it in a form.
+                    // The API is not RESTfull anyway.
+                    post("job/{jobId}/delete") {
+                        // TODO MODELIX-597 Check permissions
+                        val workspaceId = call.parameters["workspaceId"]
+                        if (workspaceId == null) {
+                            call.respond(HttpStatusCode.BadRequest, "Workspace ID is missing")
+                            return@post
+                        }
+                        // TODO MODELIX-597 extract common parameter validation logic
+                        val workspaceAndHash = manager.getWorkspaceForId(workspaceId)
+                        if (workspaceAndHash == null) {
+                            call.respond(HttpStatusCode.NotFound, "Workspace $workspaceId not found")
+                            return@post
+                        }
+                        val jobId = call.parameters["jobId"]
+                        if (jobId == null) {
+                            call.respond(HttpStatusCode.BadRequest, "Job ID is missing")
+                            return@post
+                        }
+                        gitSyncJobService.deleteJob(workspaceAndHash.workspace.id, jobId)
+                        call.respondRedirect("../../overview")
+                    }
+
+                    get("job/{jobId}/log") {
+                        // call.checkPermission(workspaceId.workspaceIdAsResource(), KeycloakScope.DELETE)
+                        val workspaceId = call.parameters["workspaceId"]
+                        if (workspaceId == null) {
+                            call.respond(HttpStatusCode.BadRequest, "Workspace ID is missing")
+                            return@get
+                        }
+                        val jobId = call.parameters["jobId"]
+                        if (jobId == null) {
+                            call.respond(HttpStatusCode.BadRequest, "Job ID is missing")
+                            return@get
+                        }
+                        // TODO MODELIX-597 Check permissions
+                        // TODO MODELIX-597 Validate jobId really exists before or let `getLog` eport it with a proper exception and status code.
+                        val log = gitSyncJobService.getLog(workspaceId, jobId)
+                        call.respondText(log)
+                    }
+                }
             }
 
             route("{workspaceHash}") {
@@ -873,15 +987,6 @@ fun Application.workspaceManagerModule() {
     }
 }
 
-private fun createCredentialEncryption(): CredentialsEncryption {
-    // Secrets mounted as files are more secure than environment variables
-    // because environment variables can more easily leak or be extracted.
-    // See https://stackoverflow.com/questions/51365355/kubernetes-secrets-volumes-vs-environment-variables
-    val credentialsEncryptionKeyFile = File("/secrets/workspacesecret/workspace-credentials-key.txt")
-    val credentialsEncryptionKey = credentialsEncryptionKeyFile.readLines().first()
-    return CredentialsEncryption(credentialsEncryptionKey)
-}
-
 private fun findGitRepo(folder: File): File? {
     if (!folder.exists()) return null
     if (folder.name == ".git") return folder.parentFile
@@ -907,5 +1012,20 @@ suspend fun ApplicationCall.respondHtmlSafe(status: HttpStatusCode = HttpStatusC
     respondText(htmlText, ContentType.Text.Html, status)
 }
 
+suspend fun ApplicationCall.respondHtmlSafe(htmlText: String, status: HttpStatusCode = HttpStatusCode.OK) {
+    respondText(htmlText, ContentType.Text.Html, status)
+}
+
 fun workspaceInstanceUrl(workspace: WorkspaceAndHash) = "workspace-${workspace.id}-${workspace.hash()}/own"
 fun workspaceInstanceUrl(workspace: WorkspaceAndHash, instance: SharedInstance) = "workspace-${workspace.id}-${workspace.hash()}/" + instance.name
+
+// TODO MODELIX-597 depuplicate code
+fun getModelServerUrl(): String {
+    // TODO MODELIX-597 check assumption that model_server_url ends with /
+    return listOf("model.server.url", "model_server_url")
+        .flatMap { listOf(System.getProperty(it), System.getenv(it)) }
+        .filterNotNull()
+        .firstOrNull() ?: "http://localhost:28101/"
+}
+
+fun getModelServerV2Url(): String = getModelServerUrl() + "v2"

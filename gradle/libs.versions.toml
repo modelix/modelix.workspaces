@@ -15,6 +15,7 @@ commons-codec = { group = "commons-codec", name = "commons-codec", version = "1.
 commons-io = { group = "commons-io", name = "commons-io", version = "2.16.1" }
 commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version = "3.15.0" }
 commons-text = { group = "org.apache.commons", name = "commons-text", version = "1.12.0" }
+commons-configuration = { group = "org.apache.commons", name = "commons-configuration2", version = "2.11.0" }
 jasypt = { group = "org.jasypt", name = "jasypt", version = "1.9.3" }
 jetty-proxy = { group = "org.eclipse.jetty", name = "jetty-proxy", version.ref = "jetty" }
 jetty-server = { group = "org.eclipse.jetty", name = "jetty-server", version.ref = "jetty" }
@@ -28,6 +29,7 @@ junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", v
 junit-jupiter-engine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junit" }
 kaml = { group = "com.charleskorn.kaml", name = "kaml", version = "0.60.0" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-debug = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-debug", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.1" }
 kotlin-logging = { group = "io.github.microutils", name = "kotlin-logging", version.ref = "kotlin-logging" }
 ktor-client-auth = { group = "io.ktor", name = "ktor-client-auth", version.ref = "ktor" }
@@ -46,6 +48,8 @@ kubernetes-client = { group = "io.kubernetes", name = "client-java", version = "
 logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 maven-invoker = { group = "org.apache.maven.shared", name = "maven-invoker", version = "3.3.0" }
 modelix-authorization = { group = "org.modelix", name = "authorization", version.ref = "modelix-core" }
+modelix-bulk-model-sync-lib = { group = "org.modelix", name = "bulk-model-sync-lib", version.ref = "modelix-core" }
+modelix-bulk-model-sync-mps = { group = "org.modelix", name = "bulk-model-sync-mps", version.ref = "modelix-core" }
 modelix-model-client = { group = "org.modelix", name = "model-client", version.ref = "modelix-core" }
 modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.7.1"}
 slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version = "2.0.13" }

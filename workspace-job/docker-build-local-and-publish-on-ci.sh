@@ -53,8 +53,8 @@ for MPS_MAJOR_VERSION in $(getProperty ../gradle.properties mpsMajorVersions | t
       -t "modelix/modelix-workspace-job:${TAG}" .
   fi
 
-  (
-    cd ..
-    ./gradlew ":workspace-job:deleteMps${MPS_MAJOR_VERSION}"
-  )
+#  (
+#    cd ..
+#    ./gradlew ":workspace-job:deleteMps${MPS_MAJOR_VERSION}"
+#  )
 done

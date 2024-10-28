@@ -46,3 +46,22 @@ tasks.getByName<Test>("test") {
 tasks.named("assemble") {
     dependsOn("installDist")
 }
+
+val copyClient = tasks.register("copyClient", Sync::class.java) {
+    dependsOn(project(":workspace-client").tasks.named("distTar"))
+    from(project(":workspace-client").layout.buildDirectory.file("distributions/workspace-client.tar"))
+    from(project(":workspace-client").layout.projectDirectory.file("pre-startup.sh"))
+    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/client"))
+}
+
+tasks.processResources {
+    dependsOn(copyClient)
+}
+
+sourceSets {
+    main {
+        resources {
+            srcDir(project.layout.buildDirectory.dir("client"))
+        }
+    }
+}

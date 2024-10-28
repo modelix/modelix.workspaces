@@ -28,48 +28,54 @@ import org.zeroturnaround.zip.ZipUtil
 import java.io.File
 
 fun main(args: Array<String>) {
-    println("env: ${System.getenv()}")
-    println("properties: ${System.getProperties()}")
+    try {
+        println("env: ${System.getenv()}")
+        println("properties: ${System.getProperties()}")
 
-    val workspaceId = propertyOrEnv("modelix.workspace.id")
-        ?: throw RuntimeException("modelix.workspace.id not specified")
-    val workspaceHash = propertyOrEnv("modelix.workspace.hash")
-        ?: throw RuntimeException("modelix.workspace.id not specified")
+        val workspaceId = propertyOrEnv("modelix.workspace.id")
+            ?: throw RuntimeException("modelix.workspace.id not specified")
+        val workspaceHash = propertyOrEnv("modelix.workspace.hash")
+            ?: throw RuntimeException("modelix.workspace.id not specified")
 
-    var serverUrl = propertyOrEnv("modelix.workspace.server", "http://workspace-manager:28104/")
-    if (!serverUrl.endsWith("/")) serverUrl += "/"
+        var serverUrl = propertyOrEnv("modelix.workspace.server", "http://workspace-manager:28104/")
+        if (!serverUrl.endsWith("/")) serverUrl += "/"
+        println("Workspace manager: $serverUrl")
 
-    val httpClient = HttpClient(CIO) {
-        defaultRequest {
-            bearerAuth(System.getenv("INITIAL_JWT_TOKEN"))
+        val httpClient = HttpClient(CIO) {
+            defaultRequest {
+                bearerAuth(System.getenv("INITIAL_JWT_TOKEN"))
+            }
+            expectSuccess = true
         }
-        expectSuccess = true
-    }
-    val outputFile = File("workspace.zip").absoluteFile
-    runBlocking {
-        var printedLines = 0
-        while (true) {
-            val statusString = httpClient.get(serverUrl + "$workspaceHash/status").bodyAsText()
-            val status = WorkspaceBuildStatus.valueOf(statusString.trim())
-            when (status) {
-                WorkspaceBuildStatus.FailedZip -> throw RuntimeException("Workspace $workspaceId / $workspaceHash failed to create the ZIP file. Can't download modules.")
-                WorkspaceBuildStatus.AllSuccessful, WorkspaceBuildStatus.ZipSuccessful -> break
-                WorkspaceBuildStatus.New, WorkspaceBuildStatus.Queued, WorkspaceBuildStatus.Running, WorkspaceBuildStatus.FailedBuild -> {
-                    val output = httpClient.get(serverUrl + "$workspaceHash/output").bodyAsText()
-                    val lines = output.split('\n').drop(printedLines)
-                    if (lines.isNotEmpty()) {
-                        printedLines += lines.size
-                        lines.forEach { println("[WORKSPACE] $it") }
+        val outputFile = File("workspace.zip").absoluteFile
+        runBlocking {
+            var printedLines = 0
+            while (true) {
+                val statusUrl = serverUrl + "$workspaceHash/status"
+                val statusString = httpClient.get(statusUrl).bodyAsText()
+                val status = WorkspaceBuildStatus.valueOf(statusString.trim())
+                when (status) {
+                    WorkspaceBuildStatus.FailedZip -> throw RuntimeException("Workspace $workspaceId / $workspaceHash failed to create the ZIP file. Can't download modules.")
+                    WorkspaceBuildStatus.AllSuccessful, WorkspaceBuildStatus.ZipSuccessful -> break
+                    WorkspaceBuildStatus.New, WorkspaceBuildStatus.Queued, WorkspaceBuildStatus.Running, WorkspaceBuildStatus.FailedBuild -> {
+                        val output = httpClient.get(serverUrl + "$workspaceHash/output").bodyAsText()
+                        val lines = output.split('\n').drop(printedLines)
+                        if (lines.isNotEmpty()) {
+                            printedLines += lines.size
+                            lines.forEach { println("[WORKSPACE] $it") }
+                        }
+                        delay(1000L)
                     }
-                    delay(1000L)
                 }
             }
+
+            httpClient.downloadFile(outputFile, "${serverUrl}$workspaceHash/workspace.zip")
         }
 
-        httpClient.downloadFile(outputFile, "${serverUrl}$workspaceHash/workspace.zip")
+        ZipUtil.unpack(outputFile, File("/mps-projects/workspace-$workspaceId"))
+    } catch (ex: Throwable) {
+        ex.printStackTrace()
     }
-
-    ZipUtil.explode(outputFile)
 }
 
 fun propertyOrEnv(key: String, default: String): String {

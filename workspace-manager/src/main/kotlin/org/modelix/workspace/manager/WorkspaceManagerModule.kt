@@ -20,6 +20,7 @@ import io.ktor.http.content.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.html.*
+import io.ktor.server.http.content.staticResources
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.request.*
@@ -55,6 +56,7 @@ fun Application.workspaceManagerModule() {
     }
 
     routing {
+        staticResources("client/", basePackage = "org.modelix.workspace.client")
         requiresPermission(workspaceListResource, KeycloakScope.READ) {
             get("/") {
                 call.respondHtmlSafe(HttpStatusCode.OK) {

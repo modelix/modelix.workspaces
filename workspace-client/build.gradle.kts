@@ -11,7 +11,6 @@ plugins {
 
 application {
     mainClass.set("org.modelix.workspace.client.MainKt")
-    applicationDefaultJvmArgs = listOf("-Dmodelix.workspace.server=http://localhost:28104/")
 }
 
 tasks.withType<ShadowJar> {
@@ -46,7 +45,6 @@ dependencies {
     implementation(libs.maven.invoker)
     implementation(libs.zt.zip)
     implementation(libs.commons.text)
-    implementation(project(":workspace-manager"))
     implementation(project(":workspaces"))
 
     testImplementation(libs.junit.jupiter.api)

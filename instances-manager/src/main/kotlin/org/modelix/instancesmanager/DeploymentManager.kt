@@ -425,7 +425,7 @@ class DeploymentManager {
             if (mpsVersion.matches("""20\d\d\.\d""".toRegex())) {
                 var image = container.image
                 if (image != null) {
-                    image = "$image-$mpsVersion"
+                    image = image.substringBeforeLast("-mps") + "-mps$mpsVersion"
                     container.image = image
                 }
             }

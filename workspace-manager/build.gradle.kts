@@ -53,6 +53,12 @@ val copyClient = tasks.register("copyClient", Sync::class.java) {
     from(project(":workspace-client").layout.projectDirectory.file("pre-startup.sh"))
     into(project.layout.buildDirectory.dir("client/org/modelix/workspace/client"))
 }
+val copyWsJob = tasks.register("copyWsJob", Sync::class.java) {
+    dependsOn(project(":workspace-job").tasks.named("distTar"))
+    from(project(":workspace-job").layout.buildDirectory.file("distributions/workspace-job.tar"))
+    from(project(":workspace-job").layout.projectDirectory.file("run-job.sh"))
+    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/job"))
+}
 
 tasks.processResources {
     dependsOn(copyClient)

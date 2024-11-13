@@ -108,15 +108,22 @@ fun Application.workspaceManagerModule() {
                                 }
                                 manager.getWorkspaceIds()
                                     .filter {
-                                        KeycloakUtils.hasPermission(call.jwt()!!, it.workspaceIdAsResource(), KeycloakScope.LIST)
-                                            || KeycloakUtils.hasPermission(call.jwt()!!, it.workspaceIdAsResource(), KeycloakScope.READ)
+                                        val isAllowedToList = call.hasPermission(
+                                            it.workspaceIdAsResource(),
+                                            KeycloakScope.LIST
+                                        )
+                                        val isAllowedToRead = call.hasPermission(
+                                            it.workspaceIdAsResource(),
+                                            KeycloakScope.READ
+                                        )
+                                        isAllowedToList || isAllowedToRead
                                     }
                                     .mapNotNull { manager.getWorkspaceForId(it) }.forEach { workspaceAndHash ->
                                         val workspace = workspaceAndHash.workspace
                                         val workspaceId = workspace.id
-                                        val canRead = KeycloakUtils.hasPermission(call.jwt()!!, workspaceId.workspaceIdAsResource(), KeycloakScope.READ)
-                                        val canWrite = KeycloakUtils.hasPermission(call.jwt()!!, workspaceId.workspaceIdAsResource(), KeycloakScope.READ)
-                                        val canDelete = KeycloakUtils.hasPermission(call.jwt()!!, workspaceId.workspaceIdAsResource(), KeycloakScope.DELETE)
+                                        val canRead = call.hasPermission(workspaceId.workspaceIdAsResource(), KeycloakScope.READ)
+                                        val canWrite = call.hasPermission(workspaceId.workspaceIdAsResource(), KeycloakScope.READ)
+                                        val canDelete = call.hasPermission(workspaceId.workspaceIdAsResource(), KeycloakScope.DELETE)
                                         tr {
                                             td {
                                                 a(classes = "workspace-name") {
@@ -207,7 +214,7 @@ fun Application.workspaceManagerModule() {
                                             }
                                         }
                                     }
-                                if (KeycloakUtils.hasPermission(call.jwt()!!, workspaceListResource, KeycloakScope.ADD)) {
+                                if (call.hasPermission(workspaceListResource, KeycloakScope.ADD)) {
                                     tr {
                                         td {
                                             colSpan = "6"
@@ -330,7 +337,7 @@ fun Application.workspaceManagerModule() {
                     }
                     val workspace = workspaceAndHash.workspace
                     val yaml = Yaml.default.encodeToString(workspace)
-                    val canWrite = KeycloakUtils.hasPermission(call.jwt()!!, workspace.asResource(), KeycloakScope.WRITE)
+                    val canWrite = call.hasPermission(workspace.asResource(), KeycloakScope.WRITE)
 
                     this.call.respondHtml(HttpStatusCode.OK) {
                         head {
@@ -545,7 +552,7 @@ fun Application.workspaceManagerModule() {
                                                 }
                                             }
                                             td {
-                                                if (KeycloakUtils.hasPermission(call.jwt()!!, uploadResource, KeycloakScope.DELETE)) {
+                                                if (call.hasPermission(uploadResource, KeycloakScope.DELETE)) {
                                                     form {
                                                         action = "./delete-upload"
                                                         method = FormMethod.post

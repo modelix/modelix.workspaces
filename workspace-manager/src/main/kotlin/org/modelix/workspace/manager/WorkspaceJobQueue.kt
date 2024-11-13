@@ -29,6 +29,7 @@ import org.modelix.workspaces.WorkspaceHash
 import java.io.IOException
 import java.util.*
 import kotlin.time.Duration.Companion.seconds
+import org.modelix.authorization.KeycloakUtils
 
 class WorkspaceJobQueue {
 
@@ -167,7 +168,7 @@ class WorkspaceJobQueue {
             }
 
             val memoryLimit = workspace.memoryLimit
-            val jwtToken = serviceAccountTokenProvider() // TODO generate token with less permissions
+            val jwtToken = if (KeycloakUtils.isEnabled()) serviceAccountTokenProvider() else null // TODO generate token with less permissions
             return """
                 apiVersion: batch/v1
                 kind: Job

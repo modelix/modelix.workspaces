@@ -13,11 +13,11 @@
  */
 package org.modelix.workspaces
 
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.modelix.authorization.KeycloakResourceType
 import org.modelix.authorization.KeycloakScope
+import org.modelix.authorization.KeycloakUtils
 import org.modelix.authorization.serviceAccountTokenProvider
 import org.modelix.model.client.RestWebModelClient
 import org.modelix.model.persistent.HashUtil
@@ -30,7 +30,7 @@ val workspaceUploadResourceType = KeycloakResourceType("workspace-upload", setOf
 
 class WorkspacePersistence {
     private val WORKSPACE_LIST_KEY = "workspaces"
-    private val modelClient: RestWebModelClient = RestWebModelClient(getModelServerUrl(), authTokenProvider = serviceAccountTokenProvider)
+    private val modelClient: RestWebModelClient = RestWebModelClient(getModelServerUrl(), authTokenProvider = { if (KeycloakUtils.isEnabled()) serviceAccountTokenProvider() else null })
 
     fun generateId(): String = SerializationUtil.longToHex(modelClient.idGenerator.generate())
 

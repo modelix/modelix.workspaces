@@ -13,4 +13,6 @@ dependencies {
     implementation(libs.jasypt)
     implementation(libs.modelix.model.client)
     implementation(libs.modelix.authorization)
+    testImplementation(kotlin("test"))
+    testImplementation(libs.modelix.authorization)
 }

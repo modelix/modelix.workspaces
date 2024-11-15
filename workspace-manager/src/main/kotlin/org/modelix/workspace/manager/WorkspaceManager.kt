@@ -14,14 +14,21 @@
 package org.modelix.workspace.manager
 
 import org.apache.commons.io.FileUtils
+import org.modelix.authorization.ModelixJWTUtil
+import org.modelix.model.persistent.SerializationUtil
+import org.modelix.workspaces.ModelServerWorkspacePersistence
 import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacePersistence
+import org.modelix.workspaces.WorkspacesPermissionSchema
+import org.modelix.workspaces.withHash
 import java.io.File
 
 class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption) {
-    private val workspacePersistence = WorkspacePersistence()
+    private val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
+    private val persistenceFile = File(System.getenv("WORKSPACES_DB_FILE") ?: "/workspace-manager/config/workspaces.json")
+    val workspacePersistence: WorkspacePersistence = FileSystemWorkspacePersistence(persistenceFile)
     private val directory: File = run {
         // The workspace will contain git repositories. Avoid cloning them into an existing repository.
         val ancestors = mutableListOf(File(".").absoluteFile)
@@ -30,10 +37,34 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         val workspacesDir = if (parentRepoDir != null) File(parentRepoDir.parent, "modelix-workspaces") else File("modelix-workspaces")
         workspacesDir.absoluteFile
     }
-    private val buildJobs = WorkspaceJobQueue()
+    private val buildJobs = WorkspaceJobQueue(tokenGenerator = { workspace ->
+        jwtUtil.createAccessToken(
+            "workspace-job@modelix.org",
+            listOf(
+                WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read.fullId,
+                WorkspacesPermissionSchema.workspaces.workspace(workspace.id).buildResult.write.fullId,
+            ) + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(workspace.id).read.fullId }
+        )
+    })
 
     init {
         println("workspaces directory: $directory")
+
+        // migrate existing workspaces from model-server persistence to file system persistence
+        if (!(persistenceFile.exists())) {
+            val legacyWorkspacePersistence: WorkspacePersistence = ModelServerWorkspacePersistence({
+                jwtUtil.createAccessToken("workspace-manager@modelix.org", listOf(
+                    "legacy-user-defined-entries/write",
+                    "legacy-user-defined-entries/read",
+                    "legacy-global-objects/add",
+                    "legacy-global-objects/read",
+                ))
+            })
+            for (id in legacyWorkspacePersistence.getWorkspaceIds()) {
+                val ws = legacyWorkspacePersistence.getWorkspaceForId(id) ?: continue
+                workspacePersistence.update(ws)
+            }
+        }
     }
 
     @Synchronized
@@ -50,8 +81,10 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
     fun getWorkspaceDirectory(workspace: Workspace) = File(directory, workspace.id)
 
     fun newUploadFolder(): File {
-        val id = UploadId(workspacePersistence.generateId())
-        val folder = getUploadFolder(id)
+        val existingFolders = getUploadsFolder().listFiles()?.toList() ?: emptyList()
+        val maxExistingId = existingFolders.map { SerializationUtil.longFromHex(it.name) }.maxOrNull() ?: 0
+        val newId = UploadId(SerializationUtil.longToHex(maxExistingId + 1))
+        val folder = getUploadFolder(newId)
         folder.mkdirs()
         return folder
     }
@@ -80,90 +113,18 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         return buildJobs.getOrCreateJob(workspace)
     }
 
-//    private fun importModulesToCloud(modulesMiner: ModulesMiner, job: Any) {
-//        job.outputHandler("***************************************************")
-//        job.outputHandler("*** Importing MPS modules into the model server ***")
-//        job.outputHandler("***************************************************")
-//
-//        val mpsHome = modulesMiner.getModules().mpsHome
-//        val mpsClassPath: MutableList<String> = ArrayList()
-//        if (mpsHome != null) {
-//            visitFiles(File(mpsHome, "lib")) { file ->
-//                if (file.isFile && file.extension.lowercase() == "jar") {
-//                    mpsClassPath += file.canonicalPath
-//                }
-//            }
-//        }
-//
-//        // Avoid connecting to any other model server
-//        for (project in modulesMiner.getModules().projects) {
-//            val cloudResourcesFile = File(File(project.path, ".mps"), "cloudResources.xml")
-//            if (cloudResourcesFile.exists()) cloudResourcesFile.delete()
-//        }
-//
-//        val json = buildEnvironmentSpec(
-//            modules = modulesMiner.getModules(),
-//            classPath = mpsClassPath,
-//            ignoredModules = job.workspace.ignoredModules.map { ModuleId(it) }.toSet(),
-//            additionalGenerationDependencies = job.workspace.additionalGenerationDependenciesAsMap()
-//        )
-//        val envFile = File("mps-environment.json")
-//        envFile.writeBytes(json.toByteArray(StandardCharsets.UTF_8))
-//
-//        JavaProcess(ModelImportMain::class).apply {
-//            outputHandler = job.outputHandler
-//            args += ModelImportMain.ENVIRONMENT_ARG_KEY
-//            args += envFile.canonicalPath
-//            jvmArgs += "-Dmodelix.executionMode=MODEL_IMPORT"
-//            jvmArgs += "-Dmodelix.import.repositoryId=workspace_${job.workspace.id}"
-//            jvmArgs += "-Dmodelix.import.serverUrl=${workspacePersistence.getModelServerUrl()}"
-//            classpath.clear()
-//            classpath += mpsClassPath
-//            classpath += (headlessMpsFolder.listFiles() ?: arrayOf()).map { it.canonicalPath }
-//            exec()
-//        }
-//    }
-//
-//    private fun buildEnvironmentSpec(modules: FoundModules,
-//                                     classPath: List<String>,
-//                                     ignoredModules: Set<ModuleId>,
-//                                     additionalGenerationDependencies: Map<ModuleId, Set<ModuleId>>): String {
-//        val mpsHome = modules.mpsHome ?: throw RuntimeException("mps.home not found")
-//        val plugins: MutableMap<String, PluginModuleOwner> = LinkedHashMap()
-//        val libraries = ArrayList<LibrarySpec>()
-//
-//        val rootModules = modules.getModules().values.filter { it.owner is SourceModuleOwner }
-//        val rootModuleIds = rootModules.map { it.moduleId }.toMutableSet()
-//        rootModuleIds += org_modelix_model_mpsplugin
-//        val graph = GeneratorDependencyGraph(ModuleResolver(modules, ignoredModules), additionalGenerationDependencies)
-//        graph.load(rootModules)
-//        val modulesToLoad = graph.getNodes().flatMap { it.modules }.map { it.owner.getRootOwner() }.toSet()
-//
-//        for (moduleOwner in modulesToLoad) {
-//            when (moduleOwner) {
-//                is PluginModuleOwner -> {
-//                    val pluginId = moduleOwner.pluginId
-//                    modules.getPluginWithDependencies(pluginId, plugins)
-//                }
-//                is LibraryModuleOwner, is SourceModuleOwner -> libraries += LibrarySpec(moduleOwner.path.getLocalAbsolutePath().toString())
-//            }
-//        }
-//        val projects = modules.projects.map { ProjectSpec(it.path.canonicalPath, it.name) }
-//        val pluginSpecs = plugins.values.map { PluginSpec(it.path.getLocalAbsolutePath().toString(), it.pluginId, it.name ?: "") }
-//        val spec = EnvironmentSpec(mpsHome.absolutePath, pluginSpecs, libraries, projects, classPath)
-//        return Json.encodeToString(spec)
-//    }
-//
-//    private fun visitFiles(file: File, visitor: (File)->Unit) {
-//        visitor(file)
-//        if (file.isDirectory) {
-//            file.listFiles()?.forEach { visitFiles(it, visitor) }
-//        }
-//    }
-
+    fun getAllWorkspaces() = workspacePersistence.getAllWorkspaces()
     fun getWorkspaceIds() = workspacePersistence.getWorkspaceIds()
-    fun getWorkspaceForId(workspaceId: String) = workspacePersistence.getWorkspaceForId(workspaceId)
+    fun getWorkspaceForId(workspaceId: String) = workspacePersistence.getWorkspaceForId(workspaceId)?.withHash()
     fun getWorkspaceForHash(workspaceHash: WorkspaceHash) = workspacePersistence.getWorkspaceForHash(workspaceHash)
-    fun newWorkspace() = workspacePersistence.newWorkspace()
+    fun newWorkspace(owner: String?): Workspace {
+        val newWorkspace = workspacePersistence.newWorkspace()
+        if (owner != null) {
+            workspacePersistence.updateAccessControlData { data ->
+                data.withGrantToUser(owner, WorkspacesPermissionSchema.workspaces.workspace(newWorkspace.id).owner.fullId)
+            }
+        }
+        return newWorkspace
+    }
     fun removeWorkspace(workspaceId: String) = workspacePersistence.removeWorkspace(workspaceId)
 }

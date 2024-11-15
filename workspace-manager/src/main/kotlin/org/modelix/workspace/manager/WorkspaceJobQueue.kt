@@ -20,18 +20,22 @@ import io.kubernetes.client.openapi.apis.CoreV1Api
 import io.kubernetes.client.openapi.models.V1Job
 import io.kubernetes.client.util.ClientBuilder
 import io.kubernetes.client.util.Yaml
-import kotlinx.coroutines.*
-import org.modelix.authorization.serviceAccountTokenProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.modelix.model.persistent.HashUtil
+import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
 import java.io.IOException
-import java.util.*
+import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
-import org.modelix.authorization.KeycloakUtils
 
-class WorkspaceJobQueue {
+class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
 
     private val workspaceHash2job: MutableMap<WorkspaceHash, Job> = HashMap()
     private val coroutinesScope = CoroutineScope(Dispatchers.Default)
@@ -168,7 +172,7 @@ class WorkspaceJobQueue {
             }
 
             val memoryLimit = workspace.memoryLimit
-            val jwtToken = if (KeycloakUtils.isEnabled()) serviceAccountTokenProvider() else null // TODO generate token with less permissions
+            val jwtToken = tokenGenerator(workspace.workspace)
             return """
                 apiVersion: batch/v1
                 kind: Job

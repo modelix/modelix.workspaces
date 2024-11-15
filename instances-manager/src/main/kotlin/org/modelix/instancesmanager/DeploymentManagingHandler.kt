@@ -47,18 +47,9 @@ class DeploymentManagingHandler : AbstractHandler() {
                 if (DeploymentManager.INSTANCE.getPod(personalDeploymentName)?.status?.phase == "Running") {
                     val log = DeploymentManager.INSTANCE.getPodLogs(personalDeploymentName) ?: ""
                     val string2progress: List<Pair<String, Int>> = listOf(
-                        "env: " to 25,
-                        "Installed plugin from" to 30,
-                        "./ide-projector-launcher.sh" to 35,
-                        "Found IDE: mps" to 40,
-                        "Listening for transport dt_socket at address" to 45,
-                        "[DEBUG] :: IdeState :: \"Init ProjectorClassLoader\" is done" to 50,
-                        "[DEBUG] :: IdeState :: \"run transformations\" is done" to 55,
-                        "[DEBUG] :: ProjectorBatchTransformer :: Success" to 60,
-                        "execution mode: PROJECTOR" to 70,
-                        "ModelServerConnection - connected to" to 75,
-                        "AutoBindings - trying to bind project:" to 80,
-                        "AutoBindings - adding project binding" to 90,
+                        "[init ] container is starting..." to 30,
+                        "[supervisor ] starting service 'app'..." to 50,
+                        "[app ] + /mps/bin/mps.sh" to 80,
                     )
                     progress = string2progress.lastOrNull { log.contains(it.first) }?.second ?: 20
                 }

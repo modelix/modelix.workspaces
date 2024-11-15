@@ -77,6 +77,7 @@ fun Workspace.withHash() = WorkspaceAndHash(this, WorkspaceHash(HashUtil.sha256(
 @Serializable
 data class GenerationDependency(val from: String, val to: String)
 
+@Serializable
 @JvmInline
 value class WorkspaceHash(val hash: String) {
     init {

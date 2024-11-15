@@ -16,6 +16,7 @@ package org.modelix.instancesmanager
 import io.kubernetes.client.openapi.ApiException
 import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.Server
+import org.eclipse.jetty.server.handler.AbstractHandler
 import org.eclipse.jetty.server.handler.DefaultHandler
 import org.eclipse.jetty.server.handler.HandlerList
 import org.eclipse.jetty.server.handler.HandlerWrapper
@@ -51,6 +52,18 @@ object Main {
         val server = Server(33332)
         val handlerList = HandlerList()
         server.handler = handlerList
+
+        handlerList.addHandler(object : AbstractHandler() {
+            override fun handle(target: String, baseRequest: Request, request: HttpServletRequest, response: HttpServletResponse) {
+                if (request.requestURI == "/.well-known/jwks.json") {
+                    baseRequest.isHandled = true
+                    response.contentType = "application/json"
+                    response.status = HttpServletResponse.SC_OK
+                    response.writer.append(DeploymentManager.INSTANCE.publicKey.toString())
+                }
+            }
+        })
+
         val deploymentManagingHandler = DeploymentManagingHandler()
         handlerList.addHandler(deploymentManagingHandler)
         val proxyServlet: ProxyServletWithWebsocketSupport = object : ProxyServletWithWebsocketSupport() {

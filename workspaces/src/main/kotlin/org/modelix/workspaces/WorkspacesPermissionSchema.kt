@@ -1,6 +1,7 @@
 package org.modelix.workspaces
 
 import org.modelix.authorization.permissions.PermissionParts
+import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.authorization.permissions.buildPermissionSchema
 
 object WorkspacesPermissionSchema {
@@ -10,16 +11,14 @@ object WorkspacesPermissionSchema {
             permission("read-all-configs")
 
             permission("admin") {
+                includedIn(PermissionSchemaBase.cluster.admin.parts[0], PermissionSchemaBase.cluster.admin.parts[1])
                 permission("user") {
+                    includedIn(PermissionSchemaBase.cluster.user.parts[0], PermissionSchemaBase.cluster.user.parts[1])
                     description("Can create and use their own workspaces")
                     permission("add") {
                         description("Can create a new workspace")
                     }
                 }
-            }
-
-            resource("access-control-data") {
-                permission("read")
             }
 
             resource("workspace") {
@@ -30,6 +29,7 @@ object WorkspacesPermissionSchema {
                         permission("write") {
                             permission("read") {
                                 includedIn("workspaces", "read-all-configs")
+                                includes("workspace", "list")
                             }
                         }
                     }
@@ -102,11 +102,6 @@ object WorkspacesPermissionSchema {
         val add = resource + "add"
 
         fun workspace(id: String) = Workspace(id)
-
-        object accessControlData {
-            val resource = workspaces.resource + "access-control-data"
-            val read = resource + "read"
-        }
 
         class Workspace(val id: String) {
             val resource = workspaces.resource + "workspace" + id

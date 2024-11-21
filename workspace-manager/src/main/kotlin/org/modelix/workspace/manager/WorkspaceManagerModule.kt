@@ -94,6 +94,7 @@ import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.checkPermission
 import org.modelix.authorization.hasPermission
 import org.modelix.authorization.jwt
+import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.authorization.requiresLogin
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
@@ -120,7 +121,7 @@ fun Application.workspaceManagerModule() {
     install(Routing)
     install(ModelixAuthorization) {
         permissionSchema = WorkspacesPermissionSchema.SCHEMA
-        accessControlDataProvider = WorkspacePersistenceAsAccessControlDataProvider(manager.workspacePersistence)
+        accessControlPersistence = manager.accessControlPersistence
         installStatusPages = true
     }
     install(ContentNegotiation) {
@@ -294,6 +295,12 @@ fun Application.workspaceManagerModule() {
                                         }
                                     }
                                 }
+                            }
+                        }
+                        br {}
+                        div {
+                            a(href = "permissions/manage") {
+                                +"Manage Permissions"
                             }
                         }
                     }
@@ -930,9 +937,9 @@ fun Application.workspaceManagerModule() {
 
             route("rest") {
                 get("access-control-data") {
-                    call.checkPermission(WorkspacesPermissionSchema.workspaces.accessControlData.read)
+                    call.checkPermission(PermissionSchemaBase.permissionData.read)
                     call.respondText(
-                        Json.encodeToString(manager.workspacePersistence.getAccessControlData()),
+                        Json.encodeToString(manager.accessControlPersistence.read()),
                         ContentType.Application.Json
                     )
                 }

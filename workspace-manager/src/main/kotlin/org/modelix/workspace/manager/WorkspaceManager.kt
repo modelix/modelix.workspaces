@@ -15,6 +15,7 @@ package org.modelix.workspace.manager
 
 import org.apache.commons.io.FileUtils
 import org.modelix.authorization.ModelixJWTUtil
+import org.modelix.authorization.permissions.FileSystemAccessControlPersistence
 import org.modelix.model.persistent.SerializationUtil
 import org.modelix.workspaces.ModelServerWorkspacePersistence
 import org.modelix.workspaces.UploadId
@@ -28,6 +29,7 @@ import java.io.File
 class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption) {
     private val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
     private val persistenceFile = File(System.getenv("WORKSPACES_DB_FILE") ?: "/workspace-manager/config/workspaces.json")
+    val accessControlPersistence = FileSystemAccessControlPersistence(persistenceFile.parentFile.resolve("permissions.json"))
     val workspacePersistence: WorkspacePersistence = FileSystemWorkspacePersistence(persistenceFile)
     private val directory: File = run {
         // The workspace will contain git repositories. Avoid cloning them into an existing repository.
@@ -120,7 +122,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
     fun newWorkspace(owner: String?): Workspace {
         val newWorkspace = workspacePersistence.newWorkspace()
         if (owner != null) {
-            workspacePersistence.updateAccessControlData { data ->
+            accessControlPersistence.update { data ->
                 data.withGrantToUser(owner, WorkspacesPermissionSchema.workspaces.workspace(newWorkspace.id).owner.fullId)
             }
         }

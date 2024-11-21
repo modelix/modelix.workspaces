@@ -27,8 +27,6 @@ interface WorkspacePersistence {
     fun getWorkspaceForId(id: String): Workspace?
     fun getWorkspaceForHash(hash: WorkspaceHash): WorkspaceAndHash?
     fun update(workspace: Workspace): WorkspaceHash
-    fun getAccessControlData(): WorkspacesAccessControlData
-    fun updateAccessControlData(updater: (WorkspacesAccessControlData) -> WorkspacesAccessControlData)
 }
 
 class ModelServerWorkspacePersistence(authTokenProvider: () -> String?) : WorkspacePersistence {
@@ -41,14 +39,6 @@ class ModelServerWorkspacePersistence(authTokenProvider: () -> String?) : Worksp
         val idString = modelClient.get(WORKSPACE_LIST_KEY)
         if (idString.isNullOrEmpty()) return setOf()
         return idString.split(",").toSet()
-    }
-
-    override fun getAccessControlData(): WorkspacesAccessControlData {
-        return WorkspacesAccessControlData()
-    }
-
-    override fun updateAccessControlData(updater: (WorkspacesAccessControlData) -> WorkspacesAccessControlData) {
-        throw UnsupportedOperationException()
     }
 
     private fun setWorkspaceIds(ids: Set<String>) {

@@ -44,6 +44,7 @@ import org.eclipse.jetty.server.Request
 import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.permissions.PermissionParts
+import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceHash
@@ -94,7 +95,7 @@ class DeploymentManager {
                     BearerTokens(jwtUtil.createAccessToken(
                         "instances-manager@modelix.org", listOf(
                             WorkspacesPermissionSchema.workspaces.readAllConfigs.fullId,
-                            WorkspacesPermissionSchema.workspaces.accessControlData.read.fullId,
+                            PermissionSchemaBase.permissionData.read.fullId,
                         )
                     ), "")
                 }
@@ -556,7 +557,7 @@ class DeploymentManager {
                 } else {
                     false
                 }
-                jwtUtil.createAccessToken("instances-manager@modelix.org", listOf(
+                jwtUtil.createAccessToken("workspace-user@modelix.org", listOf(
                     WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read.fullId,
                     PermissionParts("repository", "workspace-" + workspace.id, if (allowWrite) "write" else "read").fullId
                 ))

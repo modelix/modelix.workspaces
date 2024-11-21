@@ -20,7 +20,6 @@ private data class WorkspacesDB(
     val lastUsedWorkspaceId: Long = 0L, // for preventing reuse after delete
     val workspaces: Map<String, Workspace> = emptyMap(),
     val workspacesByHash: Map<WorkspaceHash, Workspace> = emptyMap(),
-    val accessControlData: WorkspacesAccessControlData = WorkspacesAccessControlData()
 )
 
 class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
@@ -33,27 +32,11 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
         }
     } else {
         WorkspacesDB()
-    }.let { db ->
-        // roles defined in Keycloak for backwards compatibility
-        db.copy(accessControlData = db.accessControlData
-            .withGrantToRole("modelix-user", WorkspacesPermissionSchema.workspaces.user.fullId)
-            .withGrantToRole("modelix-admin", WorkspacesPermissionSchema.workspaces.admin.fullId)
-        )
     }
 
     @Synchronized
     private fun newWorkspaceId(): String {
         return SerializationUtil.longToHex(db.lastUsedWorkspaceId + 1)
-    }
-
-    override fun getAccessControlData(): WorkspacesAccessControlData {
-        return db.accessControlData
-    }
-
-    @Synchronized
-    override fun updateAccessControlData(updater: (WorkspacesAccessControlData) -> WorkspacesAccessControlData) {
-        db = db.copy(accessControlData = updater(db.accessControlData))
-        writeDBFile()
     }
 
     override fun getWorkspaceIds(): Set<String> {

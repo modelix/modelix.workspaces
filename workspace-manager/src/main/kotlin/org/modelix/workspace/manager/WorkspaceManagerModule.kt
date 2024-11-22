@@ -130,6 +130,7 @@ fun Application.workspaceManagerModule() {
 
     routing {
         staticResources("client/", basePackage = "org.modelix.workspace.client")
+        staticResources("legacySyncPlugin/", basePackage = "org.modelix.workspace.legacySyncPlugin")
 
         requiresLogin {
             get("/") {

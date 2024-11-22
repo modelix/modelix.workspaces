@@ -45,6 +45,7 @@ import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.permissions.PermissionParts
 import org.modelix.authorization.permissions.PermissionSchemaBase
+import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceHash
@@ -551,19 +552,34 @@ class DeploymentManager {
                 .addEnvItem(V1EnvVar().name("REPOSITORY_ID").value("workspace_${workspace.id}"))
             deployment.spec!!.template.spec!!.containers[0]
                 .addEnvItem(V1EnvVar().name("modelix_workspace_hash").value(workspace.hash().hash))
-            val token = userToken?.jwt?.token ?: let {
-                val allowWrite = if (owner is SharedInstanceOwner) {
-                    workspace.sharedInstances.find { it.name == owner.name }?.allowWrite ?: false
-                } else {
-                    false
+
+            val originalJwt = userToken?.jwt
+            var userId: String? = null
+            var hasWritePermission = false
+            val newPermissions = ArrayList<PermissionParts>()
+            newPermissions += WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read
+
+            // Required for the legacy-sync-plugin
+            newPermissions += ModelServerPermissionSchema.legacyUserDefinedObjects.write
+            newPermissions += ModelServerPermissionSchema.legacyGlobalObjects.add
+            newPermissions += ModelServerPermissionSchema.repository("info").write
+
+            if (originalJwt == null) {
+                if (owner is SharedInstanceOwner && workspace.sharedInstances.find { it.name == owner.name }?.allowWrite == true) {
+                    hasWritePermission = true
                 }
-                jwtUtil.createAccessToken("workspace-user@modelix.org", listOf(
-                    WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read.fullId,
-                    PermissionParts("repository", "workspace-" + workspace.id, if (allowWrite) "write" else "read").fullId
-                ))
+            } else {
+                userId = ModelixJWTUtil().extractUserId(originalJwt)
+                val permissionEvaluator = jwtUtil.createPermissionEvaluator(originalJwt, WorkspacesPermissionSchema.SCHEMA)
+                getAccessControlData().load(originalJwt, permissionEvaluator)
+                if (permissionEvaluator.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).modelRepository.write)) {
+                    hasWritePermission = true
+                }
             }
-            deployment.spec!!.template.spec!!.containers[0]
-                .addEnvItem(V1EnvVar().name("INITIAL_JWT_TOKEN").value(token))
+            newPermissions += ModelServerPermissionSchema.repository("workspace_" + workspace.id).let { if (hasWritePermission) it.write else it.read }
+
+            val newToken = jwtUtil.createAccessToken(userId ?: "workspace-user@modelix.org", newPermissions.map { it.fullId })
+            deployment.spec!!.template.spec!!.containers[0].addEnvItem(V1EnvVar().name("INITIAL_JWT_TOKEN").value(newToken))
             loadWorkspaceSpecificValues(workspace, deployment)
             println("Creating deployment: ")
             println(Yaml.dump(deployment))

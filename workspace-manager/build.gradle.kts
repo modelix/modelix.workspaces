@@ -17,6 +17,8 @@ tasks.withType<ShadowJar> {
     archiveVersion.set("latest")
 }
 
+val legacySyncPlugin by configurations.registering
+
 dependencies {
     implementation(libs.bundles.ktor.server)
     implementation(libs.logback.classic)
@@ -37,6 +39,8 @@ dependencies {
     implementation(libs.modelix.authorization)
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)
+
+    legacySyncPlugin(libs.modelix.mpsPlugins.legacySync)
 }
 
 tasks.getByName<Test>("test") {
@@ -53,15 +57,16 @@ val copyClient = tasks.register("copyClient", Sync::class.java) {
     from(project(":workspace-client").layout.projectDirectory.file("pre-startup.sh"))
     into(project.layout.buildDirectory.dir("client/org/modelix/workspace/client"))
 }
-val copyWsJob = tasks.register("copyWsJob", Sync::class.java) {
-    dependsOn(project(":workspace-job").tasks.named("distTar"))
-    from(project(":workspace-job").layout.buildDirectory.file("distributions/workspace-job.tar"))
-    from(project(":workspace-job").layout.projectDirectory.file("run-job.sh"))
-    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/job"))
+
+val copyLegacySyncPlugin = tasks.register("copyLegacySyncPlugin", Sync::class.java) {
+    from(legacySyncPlugin)
+    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/legacySyncPlugin"))
+    rename { fileName -> "legacy-sync-plugin.zip" }
 }
 
 tasks.processResources {
     dependsOn(copyClient)
+    dependsOn(copyLegacySyncPlugin)
 }
 
 sourceSets {

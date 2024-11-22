@@ -48,6 +48,7 @@ fun main(args: Array<String>) {
             expectSuccess = true
         }
         val outputFile = File("workspace.zip").absoluteFile
+        val legacySyncPluginFile = File("legacy-sync-plugin.zip").absoluteFile
         runBlocking {
             var printedLines = 0
             while (true) {
@@ -70,9 +71,11 @@ fun main(args: Array<String>) {
             }
 
             httpClient.downloadFile(outputFile, "${serverUrl}$workspaceHash/workspace.zip")
+            httpClient.downloadFile(legacySyncPluginFile, "${serverUrl}legacySyncPlugin/legacy-sync-plugin.zip")
         }
 
         ZipUtil.unpack(outputFile, File("/mps-projects/workspace-$workspaceId"))
+        ZipUtil.unpack(legacySyncPluginFile, File("/mps/plugins"))
     } catch (ex: Throwable) {
         ex.printStackTrace()
     }

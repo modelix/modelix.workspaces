@@ -39,7 +39,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         val workspacesDir = if (parentRepoDir != null) File(parentRepoDir.parent, "modelix-workspaces") else File("modelix-workspaces")
         workspacesDir.absoluteFile
     }
-    private val buildJobs = WorkspaceJobQueue(tokenGenerator = { workspace ->
+    val workspaceJobTokenGenerator: (Workspace) -> String = { workspace ->
         jwtUtil.createAccessToken(
             "workspace-job@modelix.org",
             listOf(
@@ -47,7 +47,8 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).buildResult.write.fullId,
             ) + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read.fullId }
         )
-    })
+    }
+    private val buildJobs = WorkspaceJobQueue(tokenGenerator = workspaceJobTokenGenerator)
 
     init {
         println("workspaces directory: $directory")
@@ -75,7 +76,6 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         val hash = workspacePersistence.update(workspaceWithEncryptedCredentials)
         synchronized(buildJobs) {
             buildJobs.removeByWorkspaceId(workspace.id)
-            FileUtils.deleteQuietly(getDownloadFile(hash))
         }
         return hash
     }
@@ -102,12 +102,6 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         if (folder.exists()) {
             folder.deleteRecursively()
         }
-    }
-
-    fun getDownloadFile(workspaceHash: WorkspaceHash): File {
-        val workspace = workspacePersistence.getWorkspaceForHash(workspaceHash) ?: throw RuntimeException("Workspace not found: $workspaceHash")
-        val cleanHash = workspaceHash.toString().replace("*", "")
-        return File(File(getWorkspaceDirectory(workspace.workspace), cleanHash), "workspace.zip")
     }
 
     fun buildWorkspaceDownloadFileAsync(workspaceHash: WorkspaceHash): WorkspaceJobQueue.Job {

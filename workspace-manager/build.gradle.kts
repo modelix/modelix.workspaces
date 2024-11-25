@@ -51,12 +51,9 @@ tasks.named("assemble") {
 }
 
 val copyClient = tasks.register("copyClient", Sync::class.java) {
-    dependsOn(project(":workspace-client").tasks.named("distTar"))
     dependsOn(project(":workspace-job").tasks.named("distTar"))
     dependsOn(":workspace-client-plugin:buildPlugin")
 
-    from(project(":workspace-client").tasks.distTar.map { it.archiveFile })
-    from(project(":workspace-client").layout.projectDirectory.file("pre-startup.sh"))
     from(project(":workspace-job").tasks.distTar.map { it.archiveFile })
     from(mpsPlugins)
     into(project.layout.buildDirectory.dir("client/org/modelix/workspace/static"))

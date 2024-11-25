@@ -14,6 +14,11 @@
 
 package org.modelix.workspace.manager
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.http.HttpStatusCode
 import io.kubernetes.client.openapi.Configuration
 import io.kubernetes.client.openapi.apis.BatchV1Api
 import io.kubernetes.client.openapi.apis.CoreV1Api
@@ -26,6 +31,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.modelix.model.persistent.HashUtil
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
@@ -62,6 +68,19 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
         }
     }
 
+    private fun baseImageExists(mpsVersion: String): Boolean {
+        return try {
+            runBlocking {
+                HttpClient(CIO).get("http://${HELM_PREFIX}docker-registry:5000/v2/modelix/workspace-client-baseimage/manifests/${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion ") {
+                    header("Accept", "application/vnd.oci.image.manifest.v1+json")
+                }.status == HttpStatusCode.OK
+            }
+        } catch (ex: Throwable) {
+            LOG.error(ex) { "Failed to check if the base image for MPS version $mpsVersion exists" }
+            false
+        }
+    }
+
     fun dispose() {
         coroutinesScope.cancel("disposed")
     }
@@ -74,7 +93,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
 
     fun getOrCreateJob(workspace: WorkspaceAndHash): Job {
         synchronized(workspaceHash2job) {
-            return workspaceHash2job.getOrPut(workspace.hash()) { Job(workspace) }
+            return workspaceHash2job.getOrPut(workspace.hash()) { Job(workspace, !baseImageExists(workspace.userDefinedOrDefaultMpsVersion)) }
         }
     }
 
@@ -142,7 +161,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
         val JOB_PREFIX = HELM_PREFIX + "wsjob-"
     }
 
-    inner class Job(val workspace: WorkspaceAndHash) {
+    inner class Job(val workspace: WorkspaceAndHash, val alsoCreateBaseImage: Boolean) {
         val kubernetesJobName = generateKubernetesJobName()
         var kubernetesJob: V1Job? = null
         var status: WorkspaceBuildStatus = WorkspaceBuildStatus.New
@@ -165,21 +184,10 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
         }
 
         fun generateJobYaml(jobName: String = kubernetesJobName): String {
-            var imageVersion = IMAGE_VERSION
             val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
-            if (mpsVersion.matches("""20\d\d\.\d""".toRegex())) {
-                // e.g. 0.0.1 becomes 0.0.1-2020.3
-                imageVersion = "$imageVersion-mps$mpsVersion"
-            }
 
             val memoryLimit = workspace.memoryLimit
             val jwtToken = tokenGenerator(workspace.workspace)
-
-            val shellScript = """
-                wget "http://${HELM_PREFIX}workspace-manager:28104/static/workspace-job.tar"
-                tar -xf workspace-job.tar
-                ./workspace-job/bin/workspace-job
-            """.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString("; ")
 
             return """
                 apiVersion: batch/v1
@@ -198,10 +206,16 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                         effect: "NoExecute"                    
                       containers:
                       - name: wsjob
-                        image: $IMAGE_NAME:$imageVersion
-                        command: ["/usr/bin/sh"]
-                        args: ["-c", "${shellScript.replace("\"", "\\\"")}"]
+                        image: $IMAGE_NAME:$IMAGE_VERSION
                         env:
+                        - name: TARGET_REGISTRY
+                          value: ${HELM_PREFIX}docker-registry:5000
+                        - name: WORKSPACE_DESTINATION_IMAGE_NAME
+                          value: modelix-workspaces/ws${workspace.workspace.id}
+                        - name: WORKSPACE_DESTINATION_IMAGE_TAG
+                          value: ${workspace.hash().toValidImageTag()}
+                        - name: WORKSPACE_CONTEXT_URL
+                          value: http://${HELM_PREFIX}workspace-manager:28104/${workspace.hash().hash.replace("*", "%2A")}/context.tar.gz
                         - name: modelix_workspace_id
                           value: ${workspace.id}  
                         - name: modelix_workspace_hash
@@ -209,7 +223,13 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                         - name: modelix_workspace_server
                           value: http://${HELM_PREFIX}workspace-manager:28104/      
                         - name: INITIAL_JWT_TOKEN
-                          value: $jwtToken                   
+                          value: $jwtToken
+                        ${if (alsoCreateBaseImage || true) """
+                        - name: BASEIMAGE_CONTEXT_URL
+                          value: http://${HELM_PREFIX}workspace-manager:28104/baseimage/$mpsVersion/context.tar.gz
+                        - name: BASEIMAGE_TARGET
+                          value: ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
+                        """ else ""}
                         resources: 
                           requests:
                             memory: $memoryLimit

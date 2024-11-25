@@ -68,21 +68,8 @@ fun main(args: Array<String>) {
                 }
             }.body()
             val job = WorkspaceBuildJob(workspace.withHash(workspaceHash), httpClient, serverUrl)
-            val workspaceZip = job.buildWorkspace()
-            job.progressItems.build.uploadResult.execute {
-                httpClient.put {
-                    url {
-                        takeFrom(serverUrl)
-                        appendPathSegments(workspaceHash.hash, "workspace.zip")
-                    }
-                    setBody(object : OutgoingContent.WriteChannelContent() {
-                        override suspend fun writeTo(channel: ByteWriteChannel) {
-                            workspaceZip.readChannel().copyTo(channel)
-                        }
-                    })
-                }
-            }
-            job.status = if (job.status == WorkspaceBuildStatus.FailedBuild) WorkspaceBuildStatus.ZipSuccessful else WorkspaceBuildStatus.AllSuccessful
+            job.buildWorkspace()
+            //job.status = if (job.status == WorkspaceBuildStatus.FailedBuild) WorkspaceBuildStatus.ZipSuccessful else WorkspaceBuildStatus.AllSuccessful
         }
     } catch (ex: Throwable) {
         LOG.error(ex) { "" }

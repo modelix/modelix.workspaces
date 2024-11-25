@@ -13,7 +13,11 @@ class WorkspaceProgressItems() {
             val id = matchResult.groups[2]!!.value
             val item = itemsById[id] ?: continue
             when (status) {
-                "START" -> item.started = true
+                "START" -> {
+                    item.started = true
+                    item.done = false
+                    item.failed = false
+                }
                 "DONE" -> item.done = true
                 "FAILED" -> item.failed = true
                 else -> {
@@ -30,13 +34,15 @@ class WorkspaceProgressItems() {
     inner class Build {
         val enqueue = ProgressItem("build-enqueue", "Enqueue build job")
         val startKubernetesJob = ProgressItem("build-startKubernetesJob", "Start Kubernetes job")
+        val buildBaseImage = ProgressItem("build-buildBaseImage", "Download base image")
         val downloadMavenDependencies = ProgressItem("build-downloadMavenDependencies", "Download dependencies from Maven")
         val gitClone = ProgressItem("build-gitClone", "Clone Git repositories")
         val copyUploads = ProgressItem("build-copyUploads", "Copy uploads")
         val generateBuildScript = ProgressItem("build-generateBuildScript", "Analyze MPS module dependencies")
         val buildMpsModules = ProgressItem("build-buildMpsModules", "Build MPS modules")
-        val packageResult = ProgressItem("build-packageResult", "Package build result")
-        val uploadResult = ProgressItem("build-uploadResult", "Upload build result")
+        val deleteUnusedModules = ProgressItem("build-deleteUnusedModules", "Delete unused modules")
+        val runIndexer = ProgressItem("build-runIndexer", "Update project indexes")
+        val uploadImage = ProgressItem("build-uploadImage", "Upload workspace image")
     }
 
     inner class Container {
@@ -54,6 +60,11 @@ class WorkspaceProgressItems() {
         var failed: Boolean = false,
         var started: Boolean = false
     ) {
+
+        val logMessageStart: String get() = "### START $id ###"
+        val logMessageDone: String get() = "### DONE $id ###"
+        val logMessageFailed: String get() = "### FAILED $id ###"
+
         init {
             itemsById[id] = this
         }
@@ -68,13 +79,13 @@ class WorkspaceProgressItems() {
         }
 
         fun logStart() {
-            println("### START $id ###")
+            println(logMessageStart)
         }
         fun logDone() {
-            println("### DONE $id ###")
+            println(logMessageDone)
         }
         fun logFailed() {
-            println("### FAILED $id ###")
+            println(logMessageFailed)
         }
 
         inline fun <R> execute(body: () -> R): R {

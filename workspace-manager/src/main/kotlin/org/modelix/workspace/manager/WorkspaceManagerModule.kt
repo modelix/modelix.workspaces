@@ -95,6 +95,8 @@ import kotlinx.html.unsafe
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.io.FileUtils
 import org.modelix.authorization.ModelixAuthorization
 import org.modelix.authorization.ModelixJWTUtil
@@ -108,16 +110,21 @@ import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
 import org.modelix.model.server.ModelServerPermissionSchema
+import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspaces.SharedInstance
 import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
+import org.modelix.workspaces.WorkspaceProgressItems
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import org.zeroturnaround.zip.ZipUtil
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.GZIPOutputStream
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 fun Application.workspaceManagerModule() {
@@ -904,11 +911,7 @@ fun Application.workspaceManagerModule() {
                                 if (job.status == WorkspaceBuildStatus.ZipSuccessful) {
                                     +"Failed to build the workspace. "
                                 }
-                                +"Workspace files are ready for download: "
-                                val fileName = "workspace.zip"
-                                a(href = fileName) {
-                                    +fileName
-                                }
+                                +"Workspace image is ready"
                             }
                         }
                     }
@@ -926,34 +929,45 @@ fun Application.workspaceManagerModule() {
                     call.respondText(job.getLog(), ContentType.Text.Plain, HttpStatusCode.OK)
                 }
 
-                put("workspace.zip") {
-                    // TODO check permission
+                get("context.tar.gz") {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
-                    val workspace = manager.getWorkspaceForHash(workspaceHash)
-                    if (workspace == null) {
-                        call.respondText("Workspace $workspaceHash not found", ContentType.Text.Plain, HttpStatusCode.NotFound)
-                    } else {
-                        val file = manager.getDownloadFile(workspaceHash).absoluteFile
-                        file.parentFile.mkdirs()
-                        FileOutputStream(file).use { out ->
-                            call.receiveChannel().copyTo(out)
-                        }
-                        call.respondText("OK")
-                    }
-                }
-
-                get("workspace.zip") {
-                    val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
-                    val workspace = manager.getWorkspaceForHash(workspaceHash)
-                    if (workspace == null) {
-                        call.respondText("Workspace $workspaceHash not found", ContentType.Text.Plain, HttpStatusCode.NotFound)
-                    } else {
-                        val file = manager.getDownloadFile(workspaceHash)
-                        if (file.exists()) {
-                            call.respondFile(file)
-                        } else {
-                            call.respondText("""File doesn't exist yet. <a href="queue">Start a build job for the workspace.</a>""", ContentType.Text.Html, HttpStatusCode.NotFound)
-                        }
+                    val workspace = manager.getWorkspaceForHash(workspaceHash)!!
+                    val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
+                    val jwtToken = manager.workspaceJobTokenGenerator(workspace.workspace)
+                    call.respondTarGz { tar ->
+                        val content = """
+                            FROM ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
+                            
+                            ENV modelix_workspace_id=${workspace.id}  
+                            ENV modelix_workspace_hash=${workspace.hash()}   
+                            ENV modelix_workspace_server=http://${HELM_PREFIX}workspace-manager:28104/      
+                            ENV INITIAL_JWT_TOKEN=$jwtToken  
+                            
+                            RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
+                            
+                            USER app
+                            
+                            RUN rm -rf /mps-projects/default-mps-project
+                            
+                            RUN mkdir /config/home/job \
+                                && cd /config/home/job \ 
+                                && wget -q "http://${HELM_PREFIX}workspace-manager:28104/static/workspace-job.tar" \
+                                && tar -xf workspace-job.tar \
+                                && mkdir /mps-projects/workspace-${workspace.id} \
+                                && cd /mps-projects/workspace-${workspace.id} \
+                                && /config/home/job/workspace-job/bin/workspace-job \
+                                && rm -rf /config/home/job
+                                
+                            RUN /update-recent-projects.sh \
+                                && echo "${WorkspaceProgressItems().build.runIndexer.logMessageStart}" \
+                                && ( /run-indexer.sh || echo "${WorkspaceProgressItems().build.runIndexer.logMessageFailed}" ) \
+                                && echo "${WorkspaceProgressItems().build.runIndexer.logMessageDone}"
+                            
+                            USER root
+                        """.trimIndent().toByteArray()
+                        tar.putArchiveEntry(TarArchiveEntry("Dockerfile").also { it.size = content.size.toLong() })
+                        tar.write(content)
+                        tar.closeArchiveEntry()
                     }
                 }
             }
@@ -1018,6 +1032,46 @@ fun Application.workspaceManagerModule() {
             }
         }
 
+        get("baseimage/{mpsVersion}/context.tar.gz") {
+            val mpsVersion = call.parameters["mpsVersion"]!!
+
+            val pluginFiles = listOf(
+                "diff-plugin.zip",
+                "generator-execution-plugin.zip",
+                "legacy-sync-plugin.zip",
+                "workspace-client-plugin.zip"
+            )
+
+            call.respondTarGz { tar ->
+                val content = """
+                    FROM ${System.getenv("MPS_BASEIMAGE_NAME")}:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
+                    
+                    COPY plugins /mps/plugins
+                    
+                    RUN /run-indexer.sh
+                """.trimIndent().toByteArray()
+                tar.putArchiveEntry(TarArchiveEntry("Dockerfile").also { it.size = content.size.toLong() })
+                tar.write(content)
+                tar.closeArchiveEntry()
+
+                for (pluginFileName in pluginFiles) {
+                    val resourceName = "org/modelix/workspace/static/$pluginFileName"
+                    val resourceAsStream = checkNotNull(WorkspaceManager::class.java.classLoader.getResourceAsStream(resourceName)) {
+                        "Resource file not found: $resourceName"
+                    }
+                    resourceAsStream.use { inputStream ->
+                        ZipInputStream(inputStream).use { zipInputStream ->
+                            for (zipEntry in generateSequence { zipInputStream.nextEntry }) {
+                                tar.putArchiveEntry(TarArchiveEntry("plugins/" + zipEntry.name).also { it.size = zipEntry.size })
+                                zipInputStream.copyTo(tar)
+                                tar.closeArchiveEntry()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         get("/health") {
             call.respondText("healthy", ContentType.Text.Plain, HttpStatusCode.OK)
         }
@@ -1066,3 +1120,17 @@ suspend fun ApplicationCall.respondHtmlSafe(status: HttpStatusCode = HttpStatusC
 
 fun workspaceInstanceUrl(workspace: WorkspaceAndHash) = "workspace-${workspace.id}-${workspace.hash()}/own"
 fun workspaceInstanceUrl(workspace: WorkspaceAndHash, instance: SharedInstance) = "workspace-${workspace.id}-${workspace.hash()}/" + instance.name
+
+suspend fun ApplicationCall.respondTarGz(body: (TarArchiveOutputStream) -> Unit) {
+    respondOutputStream(ContentType.Application.GZip) {
+        val os = this
+        BufferedOutputStream(os).use { bos ->
+            GZIPOutputStream(bos).use { gzip ->
+                TarArchiveOutputStream(gzip).use { tar ->
+                    tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX)
+                    body(tar)
+                }
+            }
+        }
+    }
+}

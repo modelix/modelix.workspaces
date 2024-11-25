@@ -108,9 +108,7 @@ class GitRepositoryManager(val config: GitRepository, val workspaceDirectory: Fi
         val cmd = Git.cloneRepository()
         applyCredentials(cmd)
         cmd.setURI(config.url)
-        if (config.branch != null) {
-            cmd.setBranch(config.branch)
-        }
+        cmd.setBranch(config.branch)
         val directory = repoDirectory
         directory.mkdirs()
         cmd.setDirectory(directory)

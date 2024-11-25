@@ -420,6 +420,12 @@ class DeploymentManager {
         return deployment
     }
 
+    fun getDockerRegistryPort(): Int {
+        val api = CoreV1Api()
+        var service: V1Service? = api.readNamespacedService(System.getenv("DOCKER_REGISTRY_SERVICE_NAME"), KUBERNETES_NAMESPACE, null)
+        return service?.spec?.ports?.firstNotNullOfOrNull { it.nodePort } ?: throw IllegalStateException("Registry port unknown")
+    }
+
     fun getPod(deploymentName: InstanceName): V1Pod? {
         try {
             val coreApi = CoreV1Api()
@@ -657,14 +663,11 @@ class DeploymentManager {
     private fun loadWorkspaceSpecificValues(workspace: WorkspaceAndHash, deployment: V1Deployment) {
         try {
             val container = deployment.spec!!.template.spec!!.containers[0]
-            val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
-            if (mpsVersion.matches("""20\d\d\.\d""".toRegex())) {
-                var image = container.image
-                if (image != null) {
-                    image = image.substringBeforeLast("-mps") + "-mps$mpsVersion"
-                    container.image = image
-                }
-            }
+
+            // The image registry is made available to the container runtime via a NodePort
+            // localhost in this case is the kubernetes node, not the instances-manager
+            container.image = "localhost:${getDockerRegistryPort()}/modelix-workspaces/ws${workspace.id}:${workspace.hash().toValidImageTag()}"
+
             val resources = container.resources ?: return
             val memoryLimit = Quantity.fromString(workspace.memoryLimit)
             val limits = resources.limits

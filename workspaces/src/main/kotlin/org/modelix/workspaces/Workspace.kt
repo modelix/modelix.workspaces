@@ -85,6 +85,10 @@ value class WorkspaceHash(val hash: String) {
     override fun toString(): String {
         return hash
     }
+
+    fun toValidImageTag(): String {
+        return hash.replace("*", "")
+    }
 }
 
 @Serializable

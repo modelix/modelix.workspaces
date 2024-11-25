@@ -23,27 +23,25 @@ import io.ktor.util.cio.*
 import io.ktor.utils.io.*
 import io.ktor.utils.io.jvm.javaio.*
 import org.modelix.buildtools.*
-import org.modelix.workspaces.WorkspaceProgressItems
 import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
+import org.modelix.workspaces.WorkspaceProgressItems
 import org.w3c.dom.Document
 import org.zeroturnaround.zip.ZipUtil
 import java.io.File
-import java.io.FileOutputStream
-import java.nio.charset.StandardCharsets
 import java.nio.file.Path
-import java.util.HashSet
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.deleteExisting
+import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
+import kotlin.io.path.walk
 import kotlin.time.Duration.Companion.minutes
 
 class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpClient, val serverUrl: String) {
-    private val workspaceDir = File("workspace-build").absoluteFile
-    private val downloadFile = File("workspace.zip").absoluteFile
+    private val workspaceDir = File(".").absoluteFile
     val progressItems = WorkspaceProgressItems()
 
     init {
@@ -105,7 +103,8 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
         }
     }
 
-    suspend fun buildWorkspace(): File {
+    @OptIn(ExperimentalPathApi::class)
+    suspend fun buildWorkspace() {
         progressItems.build.startKubernetesJob.logDone()
         val mavenFolders = progressItems.build.downloadMavenDependencies.execute { copyMavenDependencies() }
         val gitFolders = progressItems.build.gitClone.execute { cloneGitRepositories() }
@@ -138,9 +137,8 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
             }
         }
 
-        progressItems.build.packageResult.execute {
-            var fileFilter: (Path) -> Boolean = { true }
-            if (workspace.loadUsedModulesOnly) {
+        if (workspace.loadUsedModulesOnly) {
+            progressItems.build.deleteUnusedModules.execute {
                 // to reduce the required memory include only those modules in the zip that are actually used
                 val resolver = ModuleResolver(modulesMiner.getModules(), workspace.ignoredModules.map { ModuleId(it) }.toSet(), true)
                 val graph = PublicationDependencyGraph(resolver, workspace.workspace.additionalGenerationDependenciesAsMap())
@@ -167,35 +165,31 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                         is LibraryModuleOwner -> (it.getGeneratorJars() + it.getPrimaryJar() + listOfNotNull(it.getSourceJar())).map { it.toPath() }
                         else -> listOf(it.path.getLocalAbsolutePath())
                     }
-                }.toSet() + gitFolders.map { it.toPath().resolve(".git") }
+                }.toSet() + gitFolders.map { it.toPath() }
                 val usedModulesOnly: (Path) -> Boolean = { path ->
                     path.ancestorsAndSelf().any {
                         it.name == ".mps" || includedFolders.contains(it)
                     }
                 }
-                fileFilter = usedModulesOnly
-            }
+                usedModulesOnly
 
-            val withoutCloudResourcesXml: (Path) -> Boolean = {
-                fileFilter(it) && !(it.name == "cloudResources.xml" && it.parent.name == ".mps")
-            }
-
-            downloadFile.parentFile.mkdirs()
-            FileOutputStream(downloadFile).use { fileStream ->
-                ZipOutputStream(fileStream).use { zipStream ->
-                    zipStream.copyFiles(workspaceDir, filter = withoutCloudResourcesXml, mapPath = { workspaceDir.toPath().relativize(it)})
-                    if (modulesXml != null) {
-                        val zipEntry = ZipEntry("modules.xml")
-                        zipStream.putNextEntry(zipEntry)
-                        zipStream.write(modulesXml.toByteArray(StandardCharsets.UTF_8))
+                // delete all files that are not included in the filter
+                workspaceDir.toPath().walk().forEach { file ->
+                    if (file.name == "cloudResources.xml" && file.parent.name == ".mps") {
+                        file.deleteExisting()
+                    } else if (file.isRegularFile() && !usedModulesOnly(file)) {
+                        file.deleteExisting()
                     }
                 }
             }
         }
 
-        // runSafely { importModulesToCloud(modulesMiner, job) }
-
-        return downloadFile
+        // the sync plugin should only connect to the repository of the current workspace
+        workspaceDir.toPath().walk().forEach { file ->
+            if (file.name == "cloudResources.xml" && file.parent.name == ".mps") {
+                file.deleteExisting()
+            }
+        }
     }
 
 

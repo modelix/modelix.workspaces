@@ -27,7 +27,7 @@ import org.modelix.workspaces.withHash
 import java.io.File
 
 class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption) {
-    private val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
+    val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
     private val persistenceFile = File(System.getenv("WORKSPACES_DB_FILE") ?: "/workspace-manager/config/workspaces.json")
     val accessControlPersistence = FileSystemAccessControlPersistence(persistenceFile.parentFile.resolve("permissions.json"))
     val workspacePersistence: WorkspacePersistence = FileSystemWorkspacePersistence(persistenceFile)

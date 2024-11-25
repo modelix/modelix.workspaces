@@ -6,7 +6,7 @@ kotlinx-coroutines = "1.9.0"
 kotlin-logging = "3.0.5"
 ktor = "2.3.12"
 logback = "1.5.12"
-modelix-core = "10.1.0-pr1190-c0461b2"
+modelix-core = "10.1.0-pr1190-c6ab4b78"
 modelix-mps-plugins = "0.9.3"
 
 [libraries]
@@ -47,6 +47,7 @@ logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.
 maven-invoker = { group = "org.apache.maven.shared", name = "maven-invoker", version = "3.3.0" }
 modelix-authorization = { group = "org.modelix", name = "authorization", version.ref = "modelix-core" }
 modelix-model-client = { group = "org.modelix", name = "model-client", version.ref = "modelix-core" }
+modelix-model-server = { group = "org.modelix", name = "model-server", version.ref = "modelix-core" }
 modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.7.3"}
 slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version = "2.0.16" }
 zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }

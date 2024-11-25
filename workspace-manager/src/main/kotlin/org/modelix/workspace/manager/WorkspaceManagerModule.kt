@@ -15,6 +15,11 @@
 package org.modelix.workspace.manager
 
 import com.charleskorn.kaml.Yaml
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.expectSuccess
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.forms.submitForm
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -22,6 +27,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.http.content.streamProvider
+import io.ktor.http.parameters
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
@@ -46,6 +52,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.ktor.util.pipeline.PipelineContext
 import io.ktor.utils.io.jvm.javaio.copyTo
 import kotlinx.html.DIV
 import kotlinx.html.FormEncType
@@ -92,6 +99,7 @@ import org.apache.commons.io.FileUtils
 import org.modelix.authorization.ModelixAuthorization
 import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.checkPermission
+import org.modelix.authorization.getUserName
 import org.modelix.authorization.hasPermission
 import org.modelix.authorization.jwt
 import org.modelix.authorization.permissions.PermissionSchemaBase
@@ -99,6 +107,7 @@ import org.modelix.authorization.requiresLogin
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
+import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.workspaces.SharedInstance
 import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.Workspace
@@ -260,7 +269,7 @@ fun Application.workspaceManagerModule() {
                                             td {
                                                 if (canRead) {
                                                     a {
-                                                        href = "../model/history/workspace_$workspaceId/master/"
+                                                        href = "$workspaceId/model-history"
                                                         text("Model History")
                                                     }
                                                 }
@@ -395,12 +404,10 @@ fun Application.workspaceManagerModule() {
             }
 
             route("{workspaceId}") {
+                fun PipelineContext<*, ApplicationCall>.workspaceId() = call.parameters["workspaceId"]!!
+
                 get("edit") {
-                    val id = call.parameters["workspaceId"]
-                    if (id == null) {
-                        call.respond(HttpStatusCode.BadRequest, "Workspace ID is missing")
-                        return@get
-                    }
+                    val id = workspaceId()
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(id).config.read)
                     val workspaceAndHash = manager.getWorkspaceForId(id)
                     if (workspaceAndHash == null) {
@@ -688,7 +695,7 @@ fun Application.workspaceManagerModule() {
 
                 post("update") {
                     val yamlText = call.receiveParameters()["content"]
-                    val id = call.parameters["workspaceId"] ?: throw IllegalArgumentException("workspaceId missing")
+                    val id = workspaceId()
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(id).config.write)
                     if (yamlText == null) {
                         call.respond(HttpStatusCode.BadRequest, "Content missing")
@@ -707,11 +714,7 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("add-maven-dependency") {
-                    val id = call.parameters["workspaceId"]
-                    if (id == null) {
-                        call.respond(HttpStatusCode.BadRequest, "Workspace ID is missing")
-                        return@post
-                    }
+                    val id = workspaceId()
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(id).config.write)
                     val workspaceAndHash = manager.getWorkspaceForId(id)
                     if (workspaceAndHash == null) {
@@ -729,7 +732,7 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("upload") {
-                    val workspaceId = call.parameters["workspaceId"]!!
+                    val workspaceId = workspaceId()
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.uploads.add)
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.write)
                     val workspace = manager.getWorkspaceForId(workspaceId)?.workspace
@@ -762,7 +765,7 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("use-upload") {
-                    val workspaceId = call.parameters["workspaceId"]!!
+                    val workspaceId = workspaceId()
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.write)
                     val uploadId = call.receiveParameters()["uploadId"]!!
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read)
@@ -772,7 +775,7 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("remove-upload") {
-                    val workspaceId = call.parameters["workspaceId"]!!
+                    val workspaceId = workspaceId()
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.write)
                     val uploadId = call.receiveParameters()["uploadId"]!!
                     val workspace = manager.getWorkspaceForId(workspaceId)?.workspace!!
@@ -789,6 +792,34 @@ fun Application.workspaceManagerModule() {
                     }
                     manager.deleteUpload(uploadId)
                     call.respondRedirect("./edit")
+                }
+
+                get("model-history") {
+                    // ensure the user has the necessary permission on the model-server
+                    val userId = call.getUserName()
+                    if (userId != null) {
+                        val permissionId = when {
+                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).modelRepository.write) -> ModelServerPermissionSchema.repository("workspace_${workspaceId()}").write
+                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).modelRepository.read) -> ModelServerPermissionSchema.repository("workspace_${workspaceId()}").read
+                            else -> null
+                        }
+                        if (permissionId != null) {
+                            HttpClient(CIO).submitForm(
+                                url = System.getenv("model_server_url") + "permissions/grant",
+                                formParameters = parameters {
+                                    append("userId", userId)
+                                    append("permissionId", permissionId.fullId)
+                                }
+                            ) {
+                                expectSuccess = true
+                                bearerAuth(manager.jwtUtil.createAccessToken("workspace-manager@modelix.org", listOf(
+                                    permissionId.fullId // for granting a permission to someone else it's sufficient to have that permission
+                                )))
+                            }
+                        }
+                    }
+
+                    call.respondRedirect("../../model/history/workspace_${workspaceId()}/master/")
                 }
             }
 

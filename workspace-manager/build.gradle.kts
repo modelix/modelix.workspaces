@@ -1,4 +1,3 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 description = "Allows multiple clients to work on the same set of modules from different sources"
 
@@ -6,15 +5,10 @@ plugins {
     application
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.shadow)
 }
 
 application {
     mainClass.set("io.ktor.server.netty.EngineMain")
-}
-
-tasks.withType<ShadowJar> {
-    archiveVersion.set("latest")
 }
 
 val legacySyncPlugin by configurations.registering
@@ -34,6 +28,8 @@ dependencies {
     implementation(libs.commons.text)
     implementation(libs.jasypt)
     implementation(libs.modelix.model.client)
+    implementation(libs.modelix.model.server)
+    implementation(libs.ktor.client.cio)
     implementation(project(":workspaces"))
     implementation(project(":gitui"))
     implementation(libs.modelix.authorization)

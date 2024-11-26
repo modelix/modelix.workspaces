@@ -57,9 +57,12 @@ val copyClient = tasks.register("copyClient", Sync::class.java) {
 }
 
 val copyMpsPlugins = tasks.register("copyMpsPlugins", Sync::class.java) {
+    dependsOn(":workspace-client-plugin:buildPlugin")
     from(mpsPlugins)
+    from(project(":workspace-client-plugin").layout.buildDirectory.dir("distributions/workspace-client-plugin.zip"))
     into(project.layout.buildDirectory.dir("client/org/modelix/workspace/mpsplugins"))
     rename { fileName ->
+        println(fileName)
         // strip version number
         val artifact = mpsPlugins.get().resolvedConfiguration.resolvedArtifacts.find { it.file.name == fileName }
             ?: return@rename fileName

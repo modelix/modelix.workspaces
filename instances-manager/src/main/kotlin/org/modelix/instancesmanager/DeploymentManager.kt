@@ -99,6 +99,7 @@ class DeploymentManager {
     private val workspaceServerUrl = System.getenv("MODELIX_WORKSPACE_SERVER") ?: "http://workspace-manager:28104/"
     private val userTokens: MutableMap<InstanceOwner, AccessTokenPrincipal> = Collections.synchronizedMap(HashMap())
     private val reconcileLock = Any()
+    private val indexWasReady: MutableSet<InstanceName> = Collections.synchronizedSet(HashSet())
 
     init {
         Configuration.setDefaultApiClient(ClientBuilder.cluster().build())
@@ -380,6 +381,10 @@ class DeploymentManager {
                         LOG.error("Failed to create deployment for workspace ${workspace.id} / $d", e)
                     }
                 }
+
+                synchronized(indexWasReady) {
+                    indexWasReady.removeAll(indexWasReady - expectedDeployments.keys)
+                }
             } catch (e: ApiException) {
                 LOG.error("Deployment cleanup failed", e)
             }
@@ -468,6 +473,19 @@ class DeploymentManager {
             return null
         }
         return null
+    }
+
+    fun isIndexerReady(deploymentName: InstanceName): Boolean {
+        // avoid doing the expensive check again
+        // also the relevant line may be truncated from the log if there is too much output
+        if (indexWasReady.contains(deploymentName)) return true
+
+        val log = getPodLogs(deploymentName) ?: return false
+        val isReady = log.contains("### Index is ready")
+        if (isReady) {
+            indexWasReady.add(deploymentName)
+        }
+        return isReady
     }
 
     fun getEvents(deploymentName: String?): List<CoreV1Event> {

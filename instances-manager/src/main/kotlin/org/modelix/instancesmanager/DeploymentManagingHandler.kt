@@ -40,21 +40,23 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
         val status = manager.getWorkspaceStatus(workspace.hash())
         if (status.canStartInstance()) {
             DeploymentTimeouts.update(personalDeploymentName)
-            val deployment = DeploymentManager.INSTANCE.getDeployment(personalDeploymentName, 3)
+            val deployment = DeploymentManager.INSTANCE.getDeployment(personalDeploymentName, 10)
                 ?: throw RuntimeException("Failed creating deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
             val readyReplicas = deployment.status?.readyReplicas ?: 0
-            if (readyReplicas > 0) {
+            val waitingForIndexer = workspace.workspace.waitForIndexer && !manager.isIndexerReady(personalDeploymentName)
+            if (readyReplicas > 0 && waitingForIndexer) {
                 progress = 100 to "Workspace instance is ready"
             } else {
-                // workspace deployment not ready yet
-                progress = 50 to "Workspace instance created"
+                progress = 50 to "Workspace deployment created. Waiting startup of the container."
                 if (DeploymentManager.INSTANCE.getPod(personalDeploymentName)?.status?.phase == "Running") {
                     progress = 50 to "Workspace container is running"
                     val log = DeploymentManager.INSTANCE.getPodLogs(personalDeploymentName) ?: ""
                     val string2progress: List<Pair<String, Pair<Int, String>>> = listOf(
                         "[init ] container is starting..." to (60 to "Workspace container is running"),
                         "[supervisor ] starting service 'app'..." to (70 to "Preparing MPS project"),
-                        "[app ] + /mps/bin/mps.sh" to (90 to "MPS is starting"),
+                        "[app ] + /mps/bin/mps.sh" to (80 to "MPS is starting"),
+                        "### Workspace client loaded" to (90 to "Project loaded. Waiting for indexer."),
+                        "### Index is ready" to (100 to "Indexing done. Project is ready."),
                     )
                     string2progress.lastOrNull { log.contains(it.first) }?.second?.let {
                         progress = it
@@ -63,12 +65,12 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
             }
         } else {
             // workspace not built yet
+            statusLink = "/workspace-manager/${workspace.hash()}/buildlog"
             progress = when (status) {
                 WorkspaceBuildStatus.New -> 10 to "Waiting for start of workspace build job"
                 WorkspaceBuildStatus.Queued -> 20 to "Workspace queued for building"
                 WorkspaceBuildStatus.Running -> 30 to "Workspace build running"
                 WorkspaceBuildStatus.FailedBuild, WorkspaceBuildStatus.FailedZip -> {
-                    statusLink = "/workspace-manager/${workspace.hash()}/buildlog"
                     0 to "Workspace build failed"
                 }
                 WorkspaceBuildStatus.AllSuccessful -> 40 to "Workspace build done"

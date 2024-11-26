@@ -38,7 +38,8 @@ data class Workspace(val id: String,
                      val ignoredModules: List<String> = ArrayList(),
                      val additionalGenerationDependencies: List<GenerationDependency> = ArrayList(),
                      val loadUsedModulesOnly: Boolean = true,
-                     val sharedInstances: List<SharedInstance> = emptyList()
+                     val sharedInstances: List<SharedInstance> = emptyList(),
+                     val waitForIndexer: Boolean = true
 ) {
     fun uploadIds() = uploads.map { UploadId(it) }
 }

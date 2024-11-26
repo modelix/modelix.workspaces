@@ -52,7 +52,7 @@ fun main(args: Array<String>) {
             File("diff-plugin.zip").absoluteFile,
             File("generator-execution-plugin.zip").absoluteFile,
             File("legacy-sync-plugin.zip").absoluteFile,
-
+            File("workspace-client-plugin.zip").absoluteFile,
         )
         runBlocking {
             var printedLines = 0

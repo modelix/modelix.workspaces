@@ -29,6 +29,7 @@ rootProject.name = "modelix.workspaces"
 include("gitui")
 include("instances-manager")
 include("workspace-client")
+include("workspace-client-plugin")
 include("workspace-job")
 include("workspace-manager")
 include("workspaces")

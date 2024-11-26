@@ -503,8 +503,7 @@ fun Application.workspaceManagerModule() {
                                         }
                                         li {
                                             b { +"mpsVersion" }
-                                            +": This is experimental."
-                                            +" The workspace will be executed using a docker image from a Modelix release for a different MPS version."
+                                            +": MPS major version. Supported values: 2022.2, 2022.3, 2023.2, 2023.3, 2024.1"
                                         }
                                         li {
                                             b { +"modelRepositories" }
@@ -578,6 +577,10 @@ fun Application.workspaceManagerModule() {
                                             +": A list of MPS module IDs that should be excluding from generation."
                                             +" Also missing dependencies that should be ignored can be listed here."
                                             +" This section is usually used when the generation fails and editing the project is not possible."
+                                        }
+                                        li {
+                                            b { +"waitForIndexer" }
+                                            +": The progress bar stays visible until the project is done indexing and the UI becomes responsive."
                                         }
                                     }
                                 }

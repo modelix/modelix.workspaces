@@ -15,56 +15,79 @@ package org.modelix.instancesmanager
 
 import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.handler.AbstractHandler
+import org.modelix.workspaces.WorkspaceBuildStatus
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
-class DeploymentManagingHandler : AbstractHandler() {
+class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandler() {
     override fun handle(target: String, baseRequest: Request, request: HttpServletRequest, response: HttpServletResponse) {
-        try {
-            val redirectedURL = DeploymentManager.INSTANCE.redirect(baseRequest, request) ?: return
-            val personalDeploymentName = redirectedURL.instanceName ?: return
+        val redirectedURL = DeploymentManager.INSTANCE.redirect(baseRequest, request) ?: return
+        val personalDeploymentName = redirectedURL.instanceName ?: return
 
-            if (DeploymentManager.INSTANCE.isInstanceDisabled(personalDeploymentName)) {
-                baseRequest.isHandled = true
-                response.contentType = "text/html"
-                response.status = HttpServletResponse.SC_OK
-                response.writer.append("""<html><body>Instance is disabled. (<a href="/instances-manager/" target="_blank">Manage Instances</a>)</body></html>""")
-                return
-            }
+        // instance disabled on the management page
+        if (DeploymentManager.INSTANCE.isInstanceDisabled(personalDeploymentName)) {
+            baseRequest.isHandled = true
+            response.contentType = "text/html"
+            response.status = HttpServletResponse.SC_OK
+            response.writer.append("""<html><body>Instance is disabled. (<a href="/instances-manager/" target="_blank">Manage Instances</a>)</body></html>""")
+            return
+        }
 
+        val workspace = manager.getWorkspaceForPath(redirectedURL.workspaceReference) ?: return
+        var progress: Pair<Int, String> = 0 to "Waiting for start of workspace build job"
+        var statusLink = "/instances-manager/log/${personalDeploymentName.name}/"
+
+        val status = manager.getWorkspaceStatus(workspace.hash())
+        if (status.canStartInstance()) {
             DeploymentTimeouts.update(personalDeploymentName)
             val deployment = DeploymentManager.INSTANCE.getDeployment(personalDeploymentName, 3)
-                ?: throw RuntimeException("Failed to create deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
-            val readyReplicas = if (deployment.status != null) deployment.status!!.readyReplicas else null
-            if (readyReplicas == null || readyReplicas == 0) {
-                baseRequest.isHandled = true
-                response.contentType = "text/html"
-                response.status = HttpServletResponse.SC_OK
-                var html = this.javaClass.getResource("/static/status-screen.html")?.readText() ?: ""
-                val workspace = DeploymentManager.INSTANCE.getWorkspaceForInstance(personalDeploymentName)
-
-                var progress: Int = 10
+                ?: throw RuntimeException("Failed creating deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
+            val readyReplicas = deployment.status?.readyReplicas ?: 0
+            if (readyReplicas > 0) {
+                progress = 100 to "Workspace instance is ready"
+            } else {
+                // workspace deployment not ready yet
+                progress = 50 to "Workspace instance created"
                 if (DeploymentManager.INSTANCE.getPod(personalDeploymentName)?.status?.phase == "Running") {
+                    progress = 50 to "Workspace container is running"
                     val log = DeploymentManager.INSTANCE.getPodLogs(personalDeploymentName) ?: ""
-                    val string2progress: List<Pair<String, Int>> = listOf(
-                        "[init ] container is starting..." to 30,
-                        "[supervisor ] starting service 'app'..." to 50,
-                        "[app ] + /mps/bin/mps.sh" to 80,
+                    val string2progress: List<Pair<String, Pair<Int, String>>> = listOf(
+                        "[init ] container is starting..." to (60 to "Workspace container is running"),
+                        "[supervisor ] starting service 'app'..." to (70 to "Preparing MPS project"),
+                        "[app ] + /mps/bin/mps.sh" to (90 to "MPS is starting"),
                     )
-                    progress = string2progress.lastOrNull { log.contains(it.first) }?.second ?: 20
+                    string2progress.lastOrNull { log.contains(it.first) }?.second?.let {
+                        progress = it
+                    }
                 }
-
-                if (workspace != null) {
-                    html = html.replace("{{workspaceName}}", workspace.name ?: workspace.id)
-                } else {
-                    progress = 0
-                }
-                html = html.replace("{{progressPercent}}", progress.toString())
-                html = html.replace("{{instanceId}}", personalDeploymentName.name)
-                response.writer.append(html)
             }
-        } catch (ex: Exception) {
-            throw RuntimeException(ex)
+        } else {
+            // workspace not built yet
+            progress = when (status) {
+                WorkspaceBuildStatus.New -> 10 to "Waiting for start of workspace build job"
+                WorkspaceBuildStatus.Queued -> 20 to "Workspace queued for building"
+                WorkspaceBuildStatus.Running -> 30 to "Workspace build running"
+                WorkspaceBuildStatus.FailedBuild, WorkspaceBuildStatus.FailedZip -> {
+                    statusLink = "/workspace-manager/${workspace.hash()}/buildlog"
+                    0 to "Workspace build failed"
+                }
+                WorkspaceBuildStatus.AllSuccessful -> 40 to "Workspace build done"
+                WorkspaceBuildStatus.ZipSuccessful -> 40 to "Workspace build done"
+            }
+        }
+
+
+        if (progress.first < 100) {
+            baseRequest.isHandled = true
+            response.contentType = "text/html"
+            response.status = HttpServletResponse.SC_OK
+            var html = this.javaClass.getResource("/static/status-screen.html")?.readText() ?: ""
+            html = html.replace("{{workspaceName}}", workspace.name ?: workspace.id)
+            html = html.replace("{{progressPercent}}", progress.first.toString())
+            html = html.replace("{{instanceId}}", personalDeploymentName.name)
+            html = html.replace("{{statusSummary}}", progress.second)
+            html = html.replace("{{statusLink}}", statusLink)
+            response.writer.append(html)
         }
     }
 

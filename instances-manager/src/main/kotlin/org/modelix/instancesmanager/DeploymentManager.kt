@@ -13,6 +13,7 @@
  */
 package org.modelix.instancesmanager
 
+import com.google.common.cache.CacheBuilder
 import com.nimbusds.jose.jwk.JWK
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -37,6 +38,11 @@ import io.kubernetes.client.openapi.models.V1Service
 import io.kubernetes.client.openapi.models.V1ServicePort
 import io.kubernetes.client.util.ClientBuilder
 import io.kubernetes.client.util.Yaml
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.apache.commons.collections4.map.LRUMap
@@ -48,39 +54,26 @@ import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
+import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacesAccessControlData
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import org.modelix.workspaces.withHash
-import java.io.IOException
 import java.util.Collections
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.function.Consumer
 import java.util.regex.Pattern
 import javax.servlet.http.HttpServletRequest
+import kotlin.time.Duration.Companion.seconds
 
 const val TIMEOUT_SECONDS = 10
 
 class DeploymentManager {
-    private val cleanupThread: Thread = object : Thread() {
-        override fun run() {
-            while (true) {
-                try {
-                    createAssignmentsForAllWorkspaces()
-                    reconcileDeployments()
-                } catch (ex: Exception) {
-                    LOG.error("", ex)
-                }
-                try {
-                    sleep(10000)
-                } catch (e: InterruptedException) {
-                    return
-                }
-            }
-        }
-    }
+    private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    private val cleanupJob: Job
     private val managerId = java.lang.Long.toHexString(System.currentTimeMillis() / 1000)
     private val deploymentSuffixSequence = AtomicLong(0xf)
     private val assignments = Collections.synchronizedMap(HashMap<WorkspaceHash, Assignments>())
@@ -105,6 +98,24 @@ class DeploymentManager {
     }
     private val workspaceServerUrl = System.getenv("MODELIX_WORKSPACE_SERVER") ?: "http://workspace-manager:28104/"
     private val userTokens: MutableMap<InstanceOwner, AccessTokenPrincipal> = Collections.synchronizedMap(HashMap())
+    private val reconcileLock = Any()
+
+    init {
+        Configuration.setDefaultApiClient(ClientBuilder.cluster().build())
+        reconcileDeployments()
+        cleanupJob = coroutineScope.launch {
+            while (true) {
+                try {
+                    createAssignmentsForAllWorkspaces()
+                    reconcileDeployments()
+                } catch (ex: Exception) {
+                    LOG.error("", ex)
+                }
+                delay(10.seconds)
+            }
+        }
+    }
+
     private fun getAssignments(workspace: WorkspaceAndHash): Assignments {
         return assignments.getOrPut(workspace.hash()) { Assignments(workspace) }
     }
@@ -131,7 +142,6 @@ class DeploymentManager {
         }
     }
 
-
     private fun getAccessControlData(): WorkspacesAccessControlData {
         return runBlocking {
             httpClientToManager.get {
@@ -140,6 +150,20 @@ class DeploymentManager {
                     appendPathSegments("rest", "access-control-data")
                 }
             }.bodyAsText().let { Json.decodeFromString(it) }
+        }
+    }
+
+    private val statusCache = CacheBuilder<WorkspaceHash, WorkspaceBuildStatus>.newBuilder()
+        .expireAfterWrite(1, TimeUnit.SECONDS)
+        .build<WorkspaceHash, WorkspaceBuildStatus>()
+    fun getWorkspaceStatus(workspaceHash: WorkspaceHash): WorkspaceBuildStatus {
+        return statusCache.get(workspaceHash) {
+            runBlocking(Dispatchers.IO) {
+                val statusUrl = workspaceServerUrl + "$workspaceHash/status"
+                val statusString = httpClientToManager.get(statusUrl).bodyAsText()
+                val status = WorkspaceBuildStatus.valueOf(statusString.trim())
+                status
+            }
         }
     }
 
@@ -216,10 +240,6 @@ class DeploymentManager {
         return InstanceName(deploymentName + suffix)
     }
 
-    private fun init() {
-
-    }
-
     @Synchronized
     fun redirect(baseRequest: Request?, request: HttpServletRequest): RedirectedURL? {
         val redirected: RedirectedURL = RedirectedURL.redirect(baseRequest, request)
@@ -262,19 +282,6 @@ class DeploymentManager {
         return redirected
     }
 
-    private val reconcileLock = Any()
-
-    init {
-        try {
-            Configuration.setDefaultApiClient(ClientBuilder.cluster().build())
-        } catch (e: IOException) {
-            throw RuntimeException(e)
-        }
-        init()
-        reconcileDeployments()
-        cleanupThread.start()
-    }
-
     private fun createAssignmentsForAllWorkspaces() {
         val latestVersions = getAllWorkspaces().map { it.withHash() }.associateBy { it.id }
         val allExistingVersions = assignments.entries.groupBy { it.value.workspace.id }
@@ -305,10 +312,9 @@ class DeploymentManager {
                     for (assignment in assignments.values) {
                         assignment.removeTimedOut()
                         for (deployment in assignment.getAllDeploymentNamesAndUserIds()) {
-                            if (!disabledInstances.contains(deployment.first)) {
-                                expectedDeployments[deployment.first] =
-                                    assignment.workspace to deployment.second
-                            }
+                            if (disabledInstances.contains(deployment.first)) continue
+                            if (!getWorkspaceStatus(assignment.workspace.hash()).canStartInstance()) continue
+                            expectedDeployments[deployment.first] = assignment.workspace to deployment.second
                         }
                     }
                 }
@@ -384,7 +390,6 @@ class DeploymentManager {
         if (dirty.getAndSet(false)) reconcileDeployments()
     }
 
-    @Throws(ApiException::class)
     fun getDeployment(name: InstanceName, attempts: Int): V1Deployment? {
         val appsApi = AppsV1Api()
         var deployment: V1Deployment? = null
@@ -504,7 +509,6 @@ class DeploymentManager {
             .map { it.workspace }.firstOrNull()
     }
 
-    @Throws(IOException::class, ApiException::class)
     fun createDeployment(
         workspace: WorkspaceAndHash,
         owner: InstanceOwner,
@@ -751,3 +755,13 @@ class DeploymentManager {
 
 @JvmInline
 value class InstanceName(val name: String)
+
+fun WorkspaceBuildStatus.canStartInstance(): Boolean = when (this) {
+    WorkspaceBuildStatus.New -> false
+    WorkspaceBuildStatus.Queued -> false
+    WorkspaceBuildStatus.Running -> false
+    WorkspaceBuildStatus.FailedBuild -> false
+    WorkspaceBuildStatus.FailedZip -> false
+    WorkspaceBuildStatus.AllSuccessful -> true
+    WorkspaceBuildStatus.ZipSuccessful -> true
+}

@@ -64,7 +64,7 @@ object Main {
             }
         })
 
-        val deploymentManagingHandler = DeploymentManagingHandler()
+        val deploymentManagingHandler = DeploymentManagingHandler(DeploymentManager.INSTANCE)
         handlerList.addHandler(deploymentManagingHandler)
         val proxyServlet: ProxyServletWithWebsocketSupport = object : ProxyServletWithWebsocketSupport() {
             override fun dataTransferred(clientSession: Session?, proxySession: Session?) {

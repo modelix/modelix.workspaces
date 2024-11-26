@@ -11,7 +11,7 @@ application {
     mainClass.set("io.ktor.server.netty.EngineMain")
 }
 
-val legacySyncPlugin by configurations.registering
+val mpsPlugins by configurations.registering
 
 dependencies {
     implementation(libs.bundles.ktor.server)
@@ -36,7 +36,9 @@ dependencies {
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)
 
-    legacySyncPlugin(libs.modelix.mpsPlugins.legacySync)
+    mpsPlugins(libs.modelix.mpsPlugins.legacySync)
+    mpsPlugins(libs.modelix.mpsPlugins.diff)
+    mpsPlugins(libs.modelix.mpsPlugins.generator)
 }
 
 tasks.getByName<Test>("test") {
@@ -54,15 +56,20 @@ val copyClient = tasks.register("copyClient", Sync::class.java) {
     into(project.layout.buildDirectory.dir("client/org/modelix/workspace/client"))
 }
 
-val copyLegacySyncPlugin = tasks.register("copyLegacySyncPlugin", Sync::class.java) {
-    from(legacySyncPlugin)
-    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/legacySyncPlugin"))
-    rename { fileName -> "legacy-sync-plugin.zip" }
+val copyMpsPlugins = tasks.register("copyMpsPlugins", Sync::class.java) {
+    from(mpsPlugins)
+    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/mpsplugins"))
+    rename { fileName ->
+        // strip version number
+        val artifact = mpsPlugins.get().resolvedConfiguration.resolvedArtifacts.find { it.file.name == fileName }
+            ?: return@rename fileName
+        artifact.name + "." + artifact.extension
+    }
 }
 
 tasks.processResources {
     dependsOn(copyClient)
-    dependsOn(copyLegacySyncPlugin)
+    dependsOn(copyMpsPlugins)
 }
 
 sourceSets {

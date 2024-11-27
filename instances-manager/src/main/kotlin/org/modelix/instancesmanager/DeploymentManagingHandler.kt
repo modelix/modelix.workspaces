@@ -47,7 +47,7 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
             if (readyReplicas > 0 && waitingForIndexer) {
                 progress = 100 to "Workspace instance is ready"
             } else {
-                progress = 50 to "Workspace deployment created. Waiting startup of the container."
+                progress = 50 to "Workspace deployment created. Waiting for startup of the container."
                 if (DeploymentManager.INSTANCE.getPod(personalDeploymentName)?.status?.phase == "Running") {
                     progress = 50 to "Workspace container is running"
                     val log = DeploymentManager.INSTANCE.getPodLogs(personalDeploymentName) ?: ""
@@ -55,8 +55,8 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
                         "[init ] container is starting..." to (60 to "Workspace container is running"),
                         "[supervisor ] starting service 'app'..." to (70 to "Preparing MPS project"),
                         "[app ] + /mps/bin/mps.sh" to (80 to "MPS is starting"),
-                        "### Workspace client loaded" to (90 to "Project loaded. Waiting for indexer."),
-                        "### Index is ready" to (100 to "Indexing done. Project is ready."),
+                        "### Workspace client loaded" to (90 to "Project is loaded. Waiting for indexer."),
+                        "### Index is ready" to (100 to "Indexing is done. Project is ready."),
                     )
                     string2progress.lastOrNull { log.contains(it.first) }?.second?.let {
                         progress = it
@@ -68,13 +68,13 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
             statusLink = "/workspace-manager/${workspace.hash()}/buildlog"
             progress = when (status) {
                 WorkspaceBuildStatus.New -> 10 to "Waiting for start of workspace build job"
-                WorkspaceBuildStatus.Queued -> 20 to "Workspace queued for building"
-                WorkspaceBuildStatus.Running -> 30 to "Workspace build running"
+                WorkspaceBuildStatus.Queued -> 20 to "Workspace is queued for building"
+                WorkspaceBuildStatus.Running -> 30 to "Workspace build is running"
                 WorkspaceBuildStatus.FailedBuild, WorkspaceBuildStatus.FailedZip -> {
                     0 to "Workspace build failed"
                 }
-                WorkspaceBuildStatus.AllSuccessful -> 40 to "Workspace build done"
-                WorkspaceBuildStatus.ZipSuccessful -> 40 to "Workspace build done"
+                WorkspaceBuildStatus.AllSuccessful -> 40 to "Workspace build is done"
+                WorkspaceBuildStatus.ZipSuccessful -> 40 to "Workspace build is done"
             }
         }
 

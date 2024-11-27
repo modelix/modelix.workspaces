@@ -77,7 +77,7 @@ fun main(args: Array<String>) {
 
             httpClient.downloadFile(outputFile, "${serverUrl}$workspaceHash/workspace.zip")
             for (mpsPluginFile in mpsPluginFiles) {
-                httpClient.downloadFile(mpsPluginFile, "${serverUrl}mpsplugins/${mpsPluginFile.name}")
+                httpClient.downloadFile(mpsPluginFile, "${serverUrl}static/${mpsPluginFile.name}")
             }
         }
 

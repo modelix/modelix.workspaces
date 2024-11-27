@@ -3,27 +3,5 @@
   extends: [
     "config:best-practices"
   ],
-  enabledManagers: ["dockerfile", "custom.regex"],
-  customManagers: [
-    {
-      // Custom manager for Docker image version in version.properties
-      customType: "regex",
-      fileMatch: ["^version.properties$"],
-      matchStrings: [
-        "javaImage(?<javaVersion>.*?)=(?<packageName>.*?):(?<currentValue>.*?)@(?<currentDigest>sha256:[a-f0-9]+)\\s"
-      ],
-      depTypeTemplate: "javaImageForMps",
-      datasourceTemplate: "docker",
-      versioningTemplate: "docker"
-    }
-  ],
-  packageRules: [
-    {
-      // Disable updates to major versions of Java containers running MPS.
-      // MPS may rely on old Java version features.
-      matchDepTypes: ["javaImageForMps"],
-      matchUpdateTypes: ["major"],
-      enabled: false
-    }
-  ]
+  enabledManagers: ["dockerfile", "custom.regex"]
 }

@@ -1,20 +1,17 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 description = "Downloads modules from a workspace before starting MPS"
 
 plugins {
     application
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.shadow)
 }
 
 application {
     mainClass.set("org.modelix.workspace.client.MainKt")
 }
 
-tasks.withType<ShadowJar> {
-    archiveVersion.set("latest")
+tasks.distTar {
+    archiveFileName = "workspace-client.tar"
 }
 
 // <editor-fold desc="IDEA plugins">

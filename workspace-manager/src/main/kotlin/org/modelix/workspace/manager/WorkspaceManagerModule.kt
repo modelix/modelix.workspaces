@@ -138,8 +138,7 @@ fun Application.workspaceManagerModule() {
     }
 
     routing {
-        staticResources("client/", basePackage = "org.modelix.workspace.client")
-        staticResources("mpsplugins/", basePackage = "org.modelix.workspace.mpsplugins")
+        staticResources("static/", basePackage = "org.modelix.workspace.static")
 
         requiresLogin {
             get("/") {

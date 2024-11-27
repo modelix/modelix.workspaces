@@ -39,6 +39,7 @@ dependencies {
     mpsPlugins(libs.modelix.mpsPlugins.legacySync)
     mpsPlugins(libs.modelix.mpsPlugins.diff)
     mpsPlugins(libs.modelix.mpsPlugins.generator)
+    mpsPlugins(project(":workspace-client-plugin", configuration = "archives"))
 }
 
 tasks.getByName<Test>("test") {
@@ -51,18 +52,15 @@ tasks.named("assemble") {
 
 val copyClient = tasks.register("copyClient", Sync::class.java) {
     dependsOn(project(":workspace-client").tasks.named("distTar"))
-    from(project(":workspace-client").layout.buildDirectory.file("distributions/workspace-client.tar"))
-    from(project(":workspace-client").layout.projectDirectory.file("pre-startup.sh"))
-    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/client"))
-}
-
-val copyMpsPlugins = tasks.register("copyMpsPlugins", Sync::class.java) {
+    dependsOn(project(":workspace-job").tasks.named("distTar"))
     dependsOn(":workspace-client-plugin:buildPlugin")
+
+    from(project(":workspace-client").tasks.distTar.map { it.archiveFile })
+    from(project(":workspace-client").layout.projectDirectory.file("pre-startup.sh"))
+    from(project(":workspace-job").tasks.distTar.map { it.archiveFile })
     from(mpsPlugins)
-    from(project(":workspace-client-plugin").layout.buildDirectory.dir("distributions/workspace-client-plugin.zip"))
-    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/mpsplugins"))
+    into(project.layout.buildDirectory.dir("client/org/modelix/workspace/static"))
     rename { fileName ->
-        println(fileName)
         // strip version number
         val artifact = mpsPlugins.get().resolvedConfiguration.resolvedArtifacts.find { it.file.name == fileName }
             ?: return@rename fileName
@@ -72,7 +70,6 @@ val copyMpsPlugins = tasks.register("copyMpsPlugins", Sync::class.java) {
 
 tasks.processResources {
     dependsOn(copyClient)
-    dependsOn(copyMpsPlugins)
 }
 
 sourceSets {

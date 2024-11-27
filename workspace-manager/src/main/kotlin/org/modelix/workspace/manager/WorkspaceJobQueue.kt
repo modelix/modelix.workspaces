@@ -168,11 +168,18 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
             val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
             if (mpsVersion.matches("""20\d\d\.\d""".toRegex())) {
                 // e.g. 0.0.1 becomes 0.0.1-2020.3
-                imageVersion = "$imageVersion-$mpsVersion"
+                imageVersion = "$imageVersion-mps$mpsVersion"
             }
 
             val memoryLimit = workspace.memoryLimit
             val jwtToken = tokenGenerator(workspace.workspace)
+
+            val shellScript = """
+                wget "http://${HELM_PREFIX}workspace-manager:28104/static/workspace-job.tar"
+                tar -xf workspace-job.tar
+                ./workspace-job/bin/workspace-job
+            """.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString("; ")
+
             return """
                 apiVersion: batch/v1
                 kind: Job
@@ -191,7 +198,8 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                       containers:
                       - name: wsjob
                         image: $IMAGE_NAME:$imageVersion
-                        command: ["/workspace-job/bin/workspace-job"]
+                        command: ["/usr/bin/sh"]
+                        args: ["-c", "${shellScript.replace("\"", "\\\"")}"]
                         env:
                         - name: modelix_workspace_id
                           value: ${workspace.id}  

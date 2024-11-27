@@ -45,7 +45,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
             listOf(
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read.fullId,
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).buildResult.write.fullId,
-            ) + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(workspace.id).read.fullId }
+            ) + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read.fullId }
         )
     })
 

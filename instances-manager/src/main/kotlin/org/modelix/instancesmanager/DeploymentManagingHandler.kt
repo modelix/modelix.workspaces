@@ -44,7 +44,7 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
                 ?: throw RuntimeException("Failed creating deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
             val readyReplicas = deployment.status?.readyReplicas ?: 0
             val waitingForIndexer = workspace.workspace.waitForIndexer && !manager.isIndexerReady(personalDeploymentName)
-            if (readyReplicas > 0 && waitingForIndexer) {
+            if (readyReplicas > 0 && !waitingForIndexer) {
                 progress = 100 to "Workspace instance is ready"
             } else {
                 progress = 50 to "Workspace deployment created. Waiting for startup of the container."

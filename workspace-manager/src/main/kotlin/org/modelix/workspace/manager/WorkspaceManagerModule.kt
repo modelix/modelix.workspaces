@@ -502,7 +502,7 @@ fun Application.workspaceManagerModule() {
                                         }
                                         li {
                                             b { +"mpsVersion" }
-                                            +": MPS major version. Supported values: 2022.2, 2022.3, 2023.2, 2023.3, 2024.1"
+                                            +": MPS major version. Supported values: 2020.3, 2021.1, 2021.2, 2021.3, 2022.2, 2022.3, 2023.2, 2023.3, 2024.1"
                                         }
                                         li {
                                             b { +"modelRepositories" }

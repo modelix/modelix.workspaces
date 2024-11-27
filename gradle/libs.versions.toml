@@ -6,7 +6,7 @@ kotlinx-coroutines = "1.9.0"
 kotlin-logging = "3.0.5"
 ktor = "2.3.12"
 logback = "1.5.12"
-modelix-core = "10.1.0-pr1190-c6ab4b78"
+modelix-core = "10.1.0-pr1190-187b03d6"
 modelix-mps-plugins = "0.9.3"
 
 [libraries]

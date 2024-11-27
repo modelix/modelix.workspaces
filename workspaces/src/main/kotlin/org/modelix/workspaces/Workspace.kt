@@ -16,14 +16,9 @@ package org.modelix.workspaces
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import org.jasypt.util.text.AES256TextEncryptor
 import org.modelix.model.persistent.HashUtil
-import java.io.File
-import java.nio.charset.StandardCharsets
-import java.security.SecureRandom
-import java.util.*
 
-const val DEFAULT_MPS_VERSION = "2020.3"
+const val DEFAULT_MPS_VERSION = "2024.1"
 
 @Serializable
 data class Workspace(val id: String,

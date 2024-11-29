@@ -37,6 +37,7 @@ import java.util.HashSet
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.io.path.name
 import kotlin.time.Duration.Companion.minutes
 
 class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpClient, val serverUrl: String) {
@@ -117,18 +118,6 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
             modulesMiner.searchInFolder(it)
         }
 
-        // Modelix and MPS-extensions are required to run the importer
-        val additionalFolders = ArrayList<File>()
-        if (!modulesMiner.getModules().getModules().containsKey(org_modelix_model_mpsplugin)) {
-            //additionalFolders += File(File(".."), "mps")
-            additionalFolders += File("/languages/modelix")
-        }
-        if (!modulesMiner.getModules().getModules().containsKey(org_modelix_model_api)) {
-            additionalFolders += File(File(File(".."), "artifacts"), "de.itemis.mps.extensions")
-            additionalFolders += File("/languages/mps-extensions")
-        }
-        additionalFolders.filter { it.exists() }.forEach { modulesMiner.searchInFolder(ModuleOrigin(it.toPath(), it.toPath())) }
-
         runSafely(WorkspaceBuildStatus.FailedBuild) {
             val buildScriptGenerator = BuildScriptGenerator(
                 modulesMiner,
@@ -155,13 +144,14 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                 it.getTransitiveDependencies(transitiveDependencies)
                 transitiveDependencies += it
             }
-            var usedModuleOwners = transitiveDependencies.flatMap { it.modules }.map { it.owner }.toSet()
-            usedModuleOwners = usedModuleOwners.map { it.getRootOwner() }.toSet()
+            var usedModuleOwners = transitiveDependencies.flatMap { it.modules }.map { it.owner }.map { it.getRootOwner() }.toSet()
+
             val transitivePlugins = kotlin.collections.HashMap<String, PluginModuleOwner>()
             usedModuleOwners.filterIsInstance<PluginModuleOwner>().forEach {
                 modulesMiner.getModules().getPluginWithDependencies(it.pluginId, transitivePlugins)
             }
             usedModuleOwners += transitivePlugins.map { it.value }
+
             val includedFolders: Set<Path> = usedModuleOwners.flatMap {
                 when (it) {
                     is SourceModuleOwner -> listOf(it.path.getLocalAbsolutePath().parent)
@@ -169,9 +159,11 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                     else -> listOf(it.path.getLocalAbsolutePath())
                 }
             }.toSet() + gitFolders.map { it.toPath().resolve(".git") }
-            //job.outputHandler("Included Folders: ")
-            //includedFolders.sorted().forEach { job.outputHandler("    $it") }
-            val usedModulesOnly: (Path) -> Boolean = { path -> path.ancestorsAndSelf().any { includedFolders.contains(it) } }
+            val usedModulesOnly: (Path) -> Boolean = { path ->
+                path.ancestorsAndSelf().any {
+                    it.name == ".mps" || includedFolders.contains(it)
+                }
+            }
             fileFilter = usedModulesOnly
         }
 

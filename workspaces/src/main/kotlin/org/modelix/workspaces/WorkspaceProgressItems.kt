@@ -30,8 +30,8 @@ class WorkspaceProgressItems() {
     inner class Build {
         val enqueue = ProgressItem("build-enqueue", "Enqueue build job")
         val startKubernetesJob = ProgressItem("build-startKubernetesJob", "Start Kubernetes job")
-        val gitClone = ProgressItem("build-gitClone", "Clone Git repositories")
         val downloadMavenDependencies = ProgressItem("build-downloadMavenDependencies", "Download dependencies from Maven")
+        val gitClone = ProgressItem("build-gitClone", "Clone Git repositories")
         val copyUploads = ProgressItem("build-copyUploads", "Copy uploads")
         val generateBuildScript = ProgressItem("build-generateBuildScript", "Analyze MPS module dependencies")
         val buildMpsModules = ProgressItem("build-buildMpsModules", "Build MPS modules")

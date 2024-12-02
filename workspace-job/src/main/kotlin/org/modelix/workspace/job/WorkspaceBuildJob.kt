@@ -23,6 +23,7 @@ import io.ktor.util.cio.*
 import io.ktor.utils.io.*
 import io.ktor.utils.io.jvm.javaio.*
 import org.modelix.buildtools.*
+import org.modelix.workspaces.WorkspaceProgressItems
 import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
@@ -43,6 +44,7 @@ import kotlin.time.Duration.Companion.minutes
 class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpClient, val serverUrl: String) {
     private val workspaceDir = File("workspace-build").absoluteFile
     private val downloadFile = File("workspace.zip").absoluteFile
+    val progressItems = WorkspaceProgressItems()
 
     init {
         workspaceDir.mkdirs()
@@ -104,77 +106,85 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
     }
 
     suspend fun buildWorkspace(): File {
-        val mavenFolders = copyMavenDependencies()
-        val gitFolders = cloneGitRepositories()
-        val uploadFolders = copyUploads()
+        progressItems.build.startKubernetesJob.logDone()
+        val mavenFolders = progressItems.build.downloadMavenDependencies.execute { copyMavenDependencies() }
+        val gitFolders = progressItems.build.gitClone.execute { cloneGitRepositories() }
+        val uploadFolders = progressItems.build.copyUploads.execute { copyUploads() }
         val mpsHome = ModuleOrigin(Path.of("/mps"), Path.of("/projector/ide"))
         val moduleFolders: List<ModuleOrigin> = (
             mavenFolders + gitFolders + uploadFolders
             ).map { ModuleOrigin(it.toPath(), workspaceDir.toPath().relativize(it.toPath())) } + mpsHome
 
+
         var modulesXml: String? = null
         val modulesMiner = ModulesMiner()
-        moduleFolders.forEach {
-            modulesMiner.searchInFolder(it)
-        }
-
         runSafely(WorkspaceBuildStatus.FailedBuild) {
-            val buildScriptGenerator = BuildScriptGenerator(
-                modulesMiner,
-                ignoredModules = workspace.ignoredModules.map { ModuleId(it) }.toSet(),
-                additionalGenerationDependencies = workspace.workspace.additionalGenerationDependenciesAsMap()
-            )
-            runSafely {
-                modulesXml = xmlToString(buildModulesXml(buildScriptGenerator.modulesMiner.getModules()))
-            }
-            buildScriptGenerator.buildModules(File(workspaceDir, "mps-build-script.xml")) { println(it) }
-        }
-
-        var fileFilter: (Path) -> Boolean = { true }
-        if (workspace.loadUsedModulesOnly) {
-            // to reduce the required memory include only those modules in the zip that are actually used
-            val resolver = ModuleResolver(modulesMiner.getModules(), workspace.ignoredModules.map { ModuleId(it) }.toSet(), true)
-            val graph = PublicationDependencyGraph(resolver, workspace.workspace.additionalGenerationDependenciesAsMap())
-            graph.load(modulesMiner.getModules().getModules().values)
-            val sourceModules: Set<ModuleId> = modulesMiner.getModules().getModules()
-                .filter { it.value.owner is SourceModuleOwner }.keys -
-                workspace.ignoredModules.map { ModuleId(it) }.toSet()
-            val transitiveDependencies = HashSet<DependencyGraph<FoundModule, ModuleId>.DependencyNode>()
-            sourceModules.mapNotNull { graph.getNode(it) }.forEach {
-                it.getTransitiveDependencies(transitiveDependencies)
-                transitiveDependencies += it
-            }
-            var usedModuleOwners = transitiveDependencies.flatMap { it.modules }.map { it.owner }.map { it.getRootOwner() }.toSet()
-
-            val transitivePlugins = kotlin.collections.HashMap<String, PluginModuleOwner>()
-            usedModuleOwners.filterIsInstance<PluginModuleOwner>().forEach {
-                modulesMiner.getModules().getPluginWithDependencies(it.pluginId, transitivePlugins)
-            }
-            usedModuleOwners += transitivePlugins.map { it.value }
-
-            val includedFolders: Set<Path> = usedModuleOwners.flatMap {
-                when (it) {
-                    is SourceModuleOwner -> listOf(it.path.getLocalAbsolutePath().parent)
-                    is LibraryModuleOwner -> (it.getGeneratorJars() + it.getPrimaryJar() + listOfNotNull(it.getSourceJar())).map { it.toPath() }
-                    else -> listOf(it.path.getLocalAbsolutePath())
+            lateinit var buildScriptGenerator: BuildScriptGenerator
+            progressItems.build.generateBuildScript.execute {
+                moduleFolders.forEach {
+                    modulesMiner.searchInFolder(it)
                 }
-            }.toSet() + gitFolders.map { it.toPath().resolve(".git") }
-            val usedModulesOnly: (Path) -> Boolean = { path ->
-                path.ancestorsAndSelf().any {
-                    it.name == ".mps" || includedFolders.contains(it)
+                buildScriptGenerator = BuildScriptGenerator(
+                    modulesMiner,
+                    ignoredModules = workspace.ignoredModules.map { ModuleId(it) }.toSet(),
+                    additionalGenerationDependencies = workspace.workspace.additionalGenerationDependenciesAsMap()
+                )
+                runSafely {
+                    modulesXml = xmlToString(buildModulesXml(buildScriptGenerator.modulesMiner.getModules()))
                 }
             }
-            fileFilter = usedModulesOnly
+            progressItems.build.buildMpsModules.execute {
+                buildScriptGenerator.buildModules(File(workspaceDir, "mps-build-script.xml")) { println(it) }
+            }
         }
 
-        downloadFile.parentFile.mkdirs()
-        FileOutputStream(downloadFile).use { fileStream ->
-            ZipOutputStream(fileStream).use { zipStream ->
-                zipStream.copyFiles(workspaceDir, filter = fileFilter, mapPath = { workspaceDir.toPath().relativize(it)})
-                if (modulesXml != null) {
-                    val zipEntry = ZipEntry("modules.xml")
-                    zipStream.putNextEntry(zipEntry)
-                    zipStream.write(modulesXml!!.toByteArray(StandardCharsets.UTF_8))
+        progressItems.build.packageResult.execute {
+            var fileFilter: (Path) -> Boolean = { true }
+            if (workspace.loadUsedModulesOnly) {
+                // to reduce the required memory include only those modules in the zip that are actually used
+                val resolver = ModuleResolver(modulesMiner.getModules(), workspace.ignoredModules.map { ModuleId(it) }.toSet(), true)
+                val graph = PublicationDependencyGraph(resolver, workspace.workspace.additionalGenerationDependenciesAsMap())
+                graph.load(modulesMiner.getModules().getModules().values)
+                val sourceModules: Set<ModuleId> = modulesMiner.getModules().getModules()
+                    .filter { it.value.owner is SourceModuleOwner }.keys -
+                        workspace.ignoredModules.map { ModuleId(it) }.toSet()
+                val transitiveDependencies = HashSet<DependencyGraph<FoundModule, ModuleId>.DependencyNode>()
+                sourceModules.mapNotNull { graph.getNode(it) }.forEach {
+                    it.getTransitiveDependencies(transitiveDependencies)
+                    transitiveDependencies += it
+                }
+                var usedModuleOwners = transitiveDependencies.flatMap { it.modules }.map { it.owner }.map { it.getRootOwner() }.toSet()
+
+                val transitivePlugins = kotlin.collections.HashMap<String, PluginModuleOwner>()
+                usedModuleOwners.filterIsInstance<PluginModuleOwner>().forEach {
+                    modulesMiner.getModules().getPluginWithDependencies(it.pluginId, transitivePlugins)
+                }
+                usedModuleOwners += transitivePlugins.map { it.value }
+
+                val includedFolders: Set<Path> = usedModuleOwners.flatMap {
+                    when (it) {
+                        is SourceModuleOwner -> listOf(it.path.getLocalAbsolutePath().parent)
+                        is LibraryModuleOwner -> (it.getGeneratorJars() + it.getPrimaryJar() + listOfNotNull(it.getSourceJar())).map { it.toPath() }
+                        else -> listOf(it.path.getLocalAbsolutePath())
+                    }
+                }.toSet() + gitFolders.map { it.toPath().resolve(".git") }
+                val usedModulesOnly: (Path) -> Boolean = { path ->
+                    path.ancestorsAndSelf().any {
+                        it.name == ".mps" || includedFolders.contains(it)
+                    }
+                }
+                fileFilter = usedModulesOnly
+            }
+
+            downloadFile.parentFile.mkdirs()
+            FileOutputStream(downloadFile).use { fileStream ->
+                ZipOutputStream(fileStream).use { zipStream ->
+                    zipStream.copyFiles(workspaceDir, filter = fileFilter, mapPath = { workspaceDir.toPath().relativize(it)})
+                    if (modulesXml != null) {
+                        val zipEntry = ZipEntry("modules.xml")
+                        zipStream.putNextEntry(zipEntry)
+                        zipStream.write(modulesXml.toByteArray(StandardCharsets.UTF_8))
+                    }
                 }
             }
         }

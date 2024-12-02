@@ -108,12 +108,13 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
         }
     }
 
-    private fun getPodLogs(podNamePrefix: String): String {
+    private fun getPodLogs(podNamePrefix: String): String? {
         try {
             val coreApi = CoreV1Api()
             val pods = coreApi
                 .listNamespacedPod(KUBERNETES_NAMESPACE, null, null, null, null, null, null, null, null, null, null, false)
             val matchingPods = pods.items.filter { it.metadata!!.name!!.startsWith(podNamePrefix) }
+            if (matchingPods.isEmpty()) return null
             return matchingPods.map { pod ->
                 try {
                     coreApi.readNamespacedPodLog(
@@ -148,7 +149,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
 
         private var cachedPodLog: String? = null
         fun updateLog() {
-            val log = getPodLogs(kubernetesJobName)
+            val log = getPodLogs(kubernetesJobName) ?: return
             cachedPodLog = log
             val lastStatusAsText = Regex("""###${WorkspaceBuildStatus::class.simpleName} = (.+)###""")
                 .findAll(log).lastOrNull()?.let { it.groupValues[1] }

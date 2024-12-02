@@ -908,7 +908,7 @@ fun Application.workspaceManagerModule() {
                                 if (job.status == WorkspaceBuildStatus.ZipSuccessful) {
                                     +"Failed to build the workspace. "
                                 }
-                                +"Workspace files ready are for download: "
+                                +"Workspace files are ready for download: "
                                 val fileName = "workspace.zip"
                                 a(href = fileName) {
                                     +fileName

@@ -32,7 +32,7 @@ data class Workspace(val id: String,
                      val uploads: List<String> = ArrayList(),
                      val ignoredModules: List<String> = ArrayList(),
                      val additionalGenerationDependencies: List<GenerationDependency> = ArrayList(),
-                     val loadUsedModulesOnly: Boolean = true,
+                     val loadUsedModulesOnly: Boolean = false,
                      val sharedInstances: List<SharedInstance> = emptyList(),
                      val waitForIndexer: Boolean = true
 ) {

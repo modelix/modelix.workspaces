@@ -168,6 +168,12 @@ class DeploymentManager {
         }
     }
 
+    fun getWorkspaceBuildLog(workspaceHash: WorkspaceHash): String {
+        return runBlocking(Dispatchers.IO) {
+            httpClientToManager.get("$workspaceServerUrl$workspaceHash/buildlog").bodyAsText()
+        }
+    }
+
     fun getAssignments(): List<AssignmentData> {
         val latestWorkspaces = getAllWorkspaces()
         var hash2workspace: Map<WorkspaceHash, WorkspaceAndHash> =

@@ -43,6 +43,10 @@
         #detailed-status a {
             color: #888;
         }
+
+        .progress-items {
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -52,6 +56,12 @@
             <div class="progress-bar" style="width: {{progressPercent}}%"></div>
         </div>
         <div id="detailed-status"><a href="{{statusLink}}" target="_blank">{{statusSummary}}</a></div>
+        <br/>
+        <div class="progress-items">
+            <table>
+                {{progressItems}}
+            </table>
+        </div>
     </div>
 </body>
 </html>

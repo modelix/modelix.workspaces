@@ -16,6 +16,7 @@ package org.modelix.instancesmanager
 import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.handler.AbstractHandler
 import org.modelix.workspaces.WorkspaceBuildStatus
+import org.modelix.workspaces.WorkspaceProgressItems
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -37,47 +38,83 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
         var progress: Pair<Int, String> = 0 to "Waiting for start of workspace build job"
         var statusLink = "/instances-manager/log/${personalDeploymentName.name}/"
 
+        val progressItems = WorkspaceProgressItems()
         val status = manager.getWorkspaceStatus(workspace.hash())
-        if (status.canStartInstance()) {
-            DeploymentTimeouts.update(personalDeploymentName)
-            val deployment = DeploymentManager.INSTANCE.getDeployment(personalDeploymentName, 10)
-                ?: throw RuntimeException("Failed creating deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
-            val readyReplicas = deployment.status?.readyReplicas ?: 0
-            val waitingForIndexer = workspace.workspace.waitForIndexer && !manager.isIndexerReady(personalDeploymentName)
-            if (readyReplicas > 0 && !waitingForIndexer) {
-                progress = 100 to "Workspace instance is ready"
-            } else {
-                progress = 50 to "Workspace deployment created. Waiting for startup of the container."
-                if (DeploymentManager.INSTANCE.getPod(personalDeploymentName)?.status?.phase == "Running") {
-                    progress = 50 to "Workspace container is running"
-                    val log = DeploymentManager.INSTANCE.getPodLogs(personalDeploymentName) ?: ""
-                    val string2progress: List<Pair<String, Pair<Int, String>>> = listOf(
-                        "[init ] container is starting..." to (60 to "Workspace container is running"),
-                        "[supervisor ] starting service 'app'..." to (70 to "Preparing MPS project"),
-                        "[app ] + /mps/bin/mps.sh" to (80 to "MPS is starting"),
-                        "### Workspace client loaded" to (90 to "Project is loaded. Waiting for indexer."),
-                        "### Index is ready" to (100 to "Indexing is done. Project is ready."),
-                    )
-                    string2progress.lastOrNull { log.contains(it.first) }?.second?.let {
-                        progress = it
-                    }
-                }
-            }
-        } else {
-            // workspace not built yet
-            statusLink = "/workspace-manager/${workspace.hash()}/buildlog"
+
+        fun loadBuildStatus() {
             progress = when (status) {
-                WorkspaceBuildStatus.New -> 10 to "Waiting for start of workspace build job"
-                WorkspaceBuildStatus.Queued -> 20 to "Workspace is queued for building"
-                WorkspaceBuildStatus.Running -> 30 to "Workspace build is running"
+                WorkspaceBuildStatus.New -> {
+                    progressItems.build.enqueue.started = true
+                    10 to "Waiting for start of workspace build job"
+                }
+                WorkspaceBuildStatus.Queued -> {
+                    progressItems.build.enqueue.done = true
+                    20 to "Workspace is queued for building"
+                }
+                WorkspaceBuildStatus.Running -> {
+                    progressItems.build.startKubernetesJob.started = true
+                    30 to "Workspace build is running"
+                }
                 WorkspaceBuildStatus.FailedBuild, WorkspaceBuildStatus.FailedZip -> {
                     0 to "Workspace build failed"
                 }
                 WorkspaceBuildStatus.AllSuccessful -> 40 to "Workspace build is done"
                 WorkspaceBuildStatus.ZipSuccessful -> 40 to "Workspace build is done"
             }
+            progressItems.build.enqueue.done = status != WorkspaceBuildStatus.New
+            progressItems.parseLog(manager.getWorkspaceBuildLog(workspace.hash()))
         }
 
+        if (status.canStartInstance()) {
+            DeploymentTimeouts.update(personalDeploymentName)
+            val deployment = DeploymentManager.INSTANCE.getDeployment(personalDeploymentName, 10)
+                ?: throw RuntimeException("Failed creating deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
+            progressItems.container.createDeployment.done = true
+            val readyReplicas = deployment.status?.readyReplicas ?: 0
+            val waitingForIndexer = workspace.workspace.waitForIndexer && !manager.isIndexerReady(personalDeploymentName)
+            if (readyReplicas > 0 && !waitingForIndexer) {
+                progress = 100 to "Workspace instance is ready"
+            } else {
+                loadBuildStatus()
+                progress = 50 to "Workspace deployment created. Waiting for startup of the container."
+                if (DeploymentManager.INSTANCE.getPod(personalDeploymentName)?.status?.phase == "Running") {
+                    progressItems.container.startContainer.started = true
+                    progress = 50 to "Workspace container is running"
+                    val log = DeploymentManager.INSTANCE.getPodLogs(personalDeploymentName) ?: ""
+                    val string2progress: List<Pair<String, Pair<Int, String>>> = listOf(
+                        "] container is starting..." to (60 to "Workspace container is running"),
+                        "] starting service 'app'..." to (70 to "Preparing MPS project"),
+                        "] + /mps/bin/mps.sh" to (80 to "MPS is starting"),
+                        "### Workspace client loaded" to (90 to "Project is loaded. Waiting for indexer."),
+                        "### Index is ready" to (100 to "Indexing is done. Project is ready."),
+                    )
+                    string2progress.lastOrNull { log.contains(it.first) }?.second?.let {
+                        progress = it
+                    }
+
+                    if (log.contains("] container is starting...")) {
+                        progressItems.container.startContainer.done = true
+                    }
+                    if (log.contains("] starting service 'app'...")) {
+                        progressItems.container.prepareMPS.started = true
+                    }
+                    if (log.contains("] + /mps/bin/mps.sh")) {
+                        progressItems.container.prepareMPS.done = true
+                        progressItems.container.startMPS.started = true
+                    }
+                    if (log.contains("### Workspace client loaded")) {
+                        progressItems.container.startMPS.done = true
+                        progressItems.container.runIndexer.started = true
+                    }
+                    if (log.contains("### Index is ready")) {
+                        progressItems.container.runIndexer.done = true
+                    }
+                }
+            }
+        } else {
+            statusLink = "/workspace-manager/${workspace.hash()}/buildlog"
+            loadBuildStatus()
+        }
 
         if (progress.first < 100) {
             baseRequest.isHandled = true
@@ -89,6 +126,14 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
             html = html.replace("{{instanceId}}", personalDeploymentName.name)
             html = html.replace("{{statusSummary}}", progress.second)
             html = html.replace("{{statusLink}}", statusLink)
+
+            val progressItemsAsHtml = progressItems.getItems().entries.joinToString("<tr><td>&nbsp;</td><td>&nbsp;</td></tr>") { group ->
+                group.value.joinToString("") {
+                    "<tr><td>${it.description}</td><td>${it.statusText()}</td></tr>"
+                }
+            }
+            html = html.replace("{{progressItems}}", progressItemsAsHtml)
+
             response.writer.append(html)
         }
     }

@@ -37,7 +37,7 @@
         }
 
         #detailed-status {
-            margin-top: 50px;
+            margin-top: 20px;
         }
 
         #detailed-status a {
@@ -47,6 +47,10 @@
         .progress-items {
             text-align: left;
         }
+
+        .progress-items td {
+            padding-right: 20px;
+        }
     </style>
 </head>
 <body>
@@ -55,6 +59,7 @@
         <div class="progress">
             <div class="progress-bar" style="width: {{progressPercent}}%"></div>
         </div>
+        <div style="margin-top: 20px; ; visibility: {{skipIndexerLinkVisibility}}"><a style="color: #f3c623" href="?waitForIndexer=false">Open MPS Now</a></div>
         <div id="detailed-status"><a href="{{statusLink}}" target="_blank">{{statusSummary}}</a></div>
         <br/>
         <div class="progress-items">

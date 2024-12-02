@@ -218,7 +218,7 @@ fun Application.workspaceManagerModule() {
                                             td {
                                                 if (canRead) {
                                                     a {
-                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/ide/"
+                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/ide/?waitForIndexer=true"
                                                         text("Open MPS")
                                                     }
                                                 }
@@ -226,7 +226,7 @@ fun Application.workspaceManagerModule() {
                                                     if (sharedInstance.allowWrite && !canWrite) continue
                                                     br {}
                                                     a {
-                                                        href = "../${workspaceInstanceUrl(workspaceAndHash, sharedInstance)}/ide/"
+                                                        href = "../${workspaceInstanceUrl(workspaceAndHash, sharedInstance)}/ide/?waitForIndexer=true"
                                                         text("Open MPS [${sharedInstance.name}]")
                                                     }
                                                 }
@@ -414,7 +414,7 @@ fun Application.workspaceManagerModule() {
                         return@get
                     }
                     val workspace = workspaceAndHash.workspace
-                    val yaml = Yaml.default.encodeToString(workspace)
+                    val yaml = workspace.toYaml()
                     val canWrite = call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.write)
 
                     this.call.respondHtml(HttpStatusCode.OK) {
@@ -444,7 +444,7 @@ fun Application.workspaceManagerModule() {
 //                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/project") { +"Open Web Interface" }
 //                                }
                                 div("menuItem") {
-                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/ide/") { +"Open MPS" }
+                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/ide/?waitForIndexer=true") { +"Open MPS" }
                                 }
                                 div("menuItem") {
                                     a("../../${workspaceInstanceUrl(workspaceAndHash)}/generator/") { +"Generator" }
@@ -576,10 +576,6 @@ fun Application.workspaceManagerModule() {
                                             +": A list of MPS module IDs that should be excluding from generation."
                                             +" Also missing dependencies that should be ignored can be listed here."
                                             +" This section is usually used when the generation fails and editing the project is not possible."
-                                        }
-                                        li {
-                                            b { +"waitForIndexer" }
-                                            +": The progress bar stays visible until the project is done indexing and the UI becomes responsive."
                                         }
                                     }
                                 }

@@ -13,6 +13,7 @@
  */
 package org.modelix.workspaces
 
+import com.charleskorn.kaml.Yaml
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -34,9 +35,11 @@ data class Workspace(val id: String,
                      val additionalGenerationDependencies: List<GenerationDependency> = ArrayList(),
                      val loadUsedModulesOnly: Boolean = false,
                      val sharedInstances: List<SharedInstance> = emptyList(),
+                     @Deprecated("Replaced by query parameter")
                      val waitForIndexer: Boolean = true
 ) {
     fun uploadIds() = uploads.map { UploadId(it) }
+    fun toYaml() = Yaml.default.encodeToString(this).replace("\nwaitForIndexer: false", "").replace("\nwaitForIndexer: true", "")
 }
 
 /**

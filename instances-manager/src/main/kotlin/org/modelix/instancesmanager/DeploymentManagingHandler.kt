@@ -37,6 +37,7 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
         val workspace = manager.getWorkspaceForPath(redirectedURL.workspaceReference) ?: return
         var progress: Pair<Int, String> = 0 to "Waiting for start of workspace build job"
         var statusLink = "/instances-manager/log/${personalDeploymentName.name}/"
+        var readyForForwarding = false
 
         val progressItems = WorkspaceProgressItems()
         val status = manager.getWorkspaceStatus(workspace.hash())
@@ -71,8 +72,10 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
                 ?: throw RuntimeException("Failed creating deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
             progressItems.container.createDeployment.done = true
             val readyReplicas = deployment.status?.readyReplicas ?: 0
-            val waitingForIndexer = workspace.workspace.waitForIndexer && !manager.isIndexerReady(personalDeploymentName)
-            if (readyReplicas > 0 && !waitingForIndexer) {
+            val waitForIndexer = request.getParameter("waitForIndexer") == "true"
+            val waitingForIndexer = waitForIndexer && !manager.isIndexerReady(personalDeploymentName)
+            readyForForwarding = readyReplicas > 0
+            if (readyForForwarding && !waitingForIndexer) {
                 progress = 100 to "Workspace instance is ready"
             } else {
                 loadBuildStatus()
@@ -133,6 +136,7 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
                 }
             }
             html = html.replace("{{progressItems}}", progressItemsAsHtml)
+            html = html.replace("{{skipIndexerLinkVisibility}}", if (readyForForwarding) "visible" else "hidden")
 
             response.writer.append(html)
         }

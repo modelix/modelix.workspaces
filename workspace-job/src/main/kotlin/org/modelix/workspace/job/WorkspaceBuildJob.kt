@@ -176,10 +176,14 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                 fileFilter = usedModulesOnly
             }
 
+            val withoutCloudResourcesXml: (Path) -> Boolean = {
+                fileFilter(it) && !(it.name == "cloudResources.xml" && it.parent.name == ".mps")
+            }
+
             downloadFile.parentFile.mkdirs()
             FileOutputStream(downloadFile).use { fileStream ->
                 ZipOutputStream(fileStream).use { zipStream ->
-                    zipStream.copyFiles(workspaceDir, filter = fileFilter, mapPath = { workspaceDir.toPath().relativize(it)})
+                    zipStream.copyFiles(workspaceDir, filter = withoutCloudResourcesXml, mapPath = { workspaceDir.toPath().relativize(it)})
                     if (modulesXml != null) {
                         val zipEntry = ZipEntry("modules.xml")
                         zipStream.putNextEntry(zipEntry)
@@ -261,3 +265,5 @@ suspend fun HttpClient.downloadFile(file: File, url: String) {
         data.copyTo(file.writeChannel())
     }
 }
+
+

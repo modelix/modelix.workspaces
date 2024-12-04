@@ -4,8 +4,16 @@ set -e
 
 echo "### DONE build-startKubernetesJob ###"
 
-cd /
+(
+  # apply custom CA certificate
+  cd /kaniko/ssl/certs
+  if [ -e docker-proxy-ca.crt ]
+  then
+    cat docker-proxy-ca.crt >> ca-certificates.crt
+  fi
+)
 
+cd /
 
 # Base image
 echo "### START build-buildBaseImage ###"

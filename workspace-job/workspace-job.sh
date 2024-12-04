@@ -20,7 +20,7 @@ if (
     --destination="$BASEIMAGE_TARGET" \
     --insecure-registry="$TARGET_REGISTRY" \
     --insecure \
-    --skip-tls-verify-pull
+    --skip-tls-verify-pull \
     --cache=true \
     --cache-run-layers \
     --cache-copy-layers

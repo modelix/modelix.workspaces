@@ -93,7 +93,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
 
     fun getOrCreateJob(workspace: WorkspaceAndHash): Job {
         synchronized(workspaceHash2job) {
-            return workspaceHash2job.getOrPut(workspace.hash()) { Job(workspace, !baseImageExists(workspace.userDefinedOrDefaultMpsVersion)) }
+            return workspaceHash2job.getOrPut(workspace.hash()) { Job(workspace) }
         }
     }
 
@@ -161,7 +161,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
         val JOB_PREFIX = HELM_PREFIX + "wsjob-"
     }
 
-    inner class Job(val workspace: WorkspaceAndHash, val alsoCreateBaseImage: Boolean) {
+    inner class Job(val workspace: WorkspaceAndHash) {
         val kubernetesJobName = generateKubernetesJobName()
         var kubernetesJob: V1Job? = null
         var status: WorkspaceBuildStatus = WorkspaceBuildStatus.New
@@ -188,6 +188,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
 
             val memoryLimit = workspace.memoryLimit
             val jwtToken = tokenGenerator(workspace.workspace)
+            val dockerConfigSecretName = System.getenv("DOCKER_CONFIG_SECRET_NAME")
 
             return """
                 apiVersion: batch/v1
@@ -224,20 +225,34 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                           value: http://${HELM_PREFIX}workspace-manager:28104/      
                         - name: INITIAL_JWT_TOKEN
                           value: $jwtToken
-                        ${if (alsoCreateBaseImage || true) """
                         - name: BASEIMAGE_CONTEXT_URL
                           value: http://${HELM_PREFIX}workspace-manager:28104/baseimage/$mpsVersion/context.tar.gz
                         - name: BASEIMAGE_TARGET
                           value: ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
-                        """ else ""}
                         resources: 
                           requests:
                             memory: $memoryLimit
                             cpu: "0.1"
                           limits:
                             memory: $memoryLimit
-                            cpu: "1.0"                        
+                            cpu: "1.0" 
+                        ${if (dockerConfigSecretName != null) """
+                        volumeMounts:
+                        - name: "docker-config"
+                          mountPath: /kaniko/.docker/config.json
+                          subPath: config.json
+                          readOnly: true
+                        """ else ""}
                       restartPolicy: Never
+                      ${if (dockerConfigSecretName != null) """
+                      volumes:
+                      - name: "docker-config"
+                        secret:
+                          secretName: "$dockerConfigSecretName"
+                          items:
+                            - key: .dockerconfigjson
+                              path: config.json
+                      """ else ""}
                   backoffLimit: 2
             """.trimIndent()
         }

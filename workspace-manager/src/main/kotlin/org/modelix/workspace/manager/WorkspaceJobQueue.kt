@@ -119,11 +119,15 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                 WorkspaceBuildStatus.FailedBuild, WorkspaceBuildStatus.FailedZip, WorkspaceBuildStatus.AllSuccessful, WorkspaceBuildStatus.ZipSuccessful -> continue
             }
 
-            val job: V1Job = Yaml.loadAs(missingJob.generateJobYaml(), V1Job::class.java)
-
-            BatchV1Api().createNamespacedJob(KUBERNETES_NAMESPACE, job, null, null, null, null)
-            missingJob.kubernetesJob = job
-            missingJob.status = WorkspaceBuildStatus.Queued
+            val yamlString = missingJob.generateJobYaml()
+            try {
+                val job: V1Job = Yaml.loadAs(yamlString, V1Job::class.java)
+                BatchV1Api().createNamespacedJob(KUBERNETES_NAMESPACE, job, null, null, null, null)
+                missingJob.kubernetesJob = job
+                missingJob.status = WorkspaceBuildStatus.Queued
+            } catch (ex: Exception) {
+                throw RuntimeException("Cannot create job:\n$yamlString", ex)
+            }
         }
     }
 
@@ -242,6 +246,10 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                           mountPath: /kaniko/.docker/config.json
                           subPath: config.json
                           readOnly: true
+                        - name: "docker-proxy-ca"
+                          mountPath: /kaniko/ssl/certs/docker-proxy-ca.crt
+                          subPath: docker-proxy-ca.crt
+                          readOnly: true
                         """ else ""}
                       restartPolicy: Never
                       ${if (dockerConfigSecretName != null) """
@@ -252,6 +260,12 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                           items:
                             - key: .dockerconfigjson
                               path: config.json
+                      - name: "docker-proxy-ca"
+                        secret:
+                          secretName: "$dockerConfigSecretName"
+                          items:
+                            - key: caCertificate
+                              path: docker-proxy-ca.crt
                       """ else ""}
                   backoffLimit: 2
             """.trimIndent()

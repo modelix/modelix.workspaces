@@ -12,15 +12,30 @@ echo "### START build-buildBaseImage ###"
 
 wget -q "$BASEIMAGE_CONTEXT_URL"
 
-if /kaniko/executor \
-  --dockerfile=Dockerfile \
-  --context="tar:///context.tar.gz" \
-  --destination="$BASEIMAGE_TARGET" \
-  --insecure-registry="$TARGET_REGISTRY" \
-  --insecure \
-  --cache=true \
-  --cache-run-layers \
-  --cache-copy-layers
+if (
+  if [ "$SKIP_TLS_VERIFY_PULL" = "true" ]; then
+    /kaniko/executor \
+    --dockerfile=Dockerfile \
+    --context="tar:///context.tar.gz" \
+    --destination="$BASEIMAGE_TARGET" \
+    --insecure-registry="$TARGET_REGISTRY" \
+    --insecure \
+    --skip-tls-verify-pull
+    --cache=true \
+    --cache-run-layers \
+    --cache-copy-layers
+  else
+    /kaniko/executor \
+    --dockerfile=Dockerfile \
+    --context="tar:///context.tar.gz" \
+    --destination="$BASEIMAGE_TARGET" \
+    --insecure-registry="$TARGET_REGISTRY" \
+    --insecure \
+    --cache=true \
+    --cache-run-layers \
+    --cache-copy-layers
+  fi
+)
 then
   echo "### DONE build-buildBaseImage ###"
 else

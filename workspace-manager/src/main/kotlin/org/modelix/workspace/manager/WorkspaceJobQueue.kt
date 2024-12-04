@@ -229,6 +229,8 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                           value: http://${HELM_PREFIX}workspace-manager:28104/baseimage/$mpsVersion/context.tar.gz
                         - name: BASEIMAGE_TARGET
                           value: ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
+                        - name: SKIP_TLS_VERIFY_PULL
+                          value: ${System.getenv("SKIP_TLS_VERIFY_PULL") ?: "false"}
                         resources: 
                           requests:
                             memory: $memoryLimit

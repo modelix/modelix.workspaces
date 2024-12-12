@@ -327,20 +327,10 @@ class DeploymentManager {
                 }
                 val appsApi = AppsV1Api()
                 val coreApi = CoreV1Api()
-                val deployments = appsApi.listNamespacedDeployment(
-                    KUBERNETES_NAMESPACE,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    TIMEOUT_SECONDS,
-                    false
-                )
+                val deployments = appsApi
+                    .listNamespacedDeployment(KUBERNETES_NAMESPACE)
+                    .timeoutSeconds(TIMEOUT_SECONDS)
+                    .execute()
                 for (deployment in deployments.items) {
                     val name = deployment.metadata!!.name!!
                     if (name.startsWith(INSTANCE_PREFIX)) {
@@ -351,30 +341,12 @@ class DeploymentManager {
                 val toRemove = existingDeployments - expectedDeployments.keys
                 for (d in toRemove) {
                     try {
-                        appsApi.deleteNamespacedDeployment(
-                            d.name,
-                            KUBERNETES_NAMESPACE,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null
-                        )
+                        appsApi.deleteNamespacedDeployment(d.name, KUBERNETES_NAMESPACE).execute()
                     } catch (e: Exception) {
                         LOG.error("Failed to delete deployment $d", e)
                     }
                     try {
-                        coreApi.deleteNamespacedService(
-                            d.name,
-                            KUBERNETES_NAMESPACE,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null
-                        )
+                        coreApi.deleteNamespacedService(d.name, KUBERNETES_NAMESPACE).execute()
                     } catch (e: Exception) {
                         LOG.error("Failed to delete service $d", e)
                     }
@@ -406,7 +378,7 @@ class DeploymentManager {
         var deployment: V1Deployment? = null
         for (i in 0 until attempts) {
             try {
-                deployment = appsApi.readNamespacedDeployment(name.name, KUBERNETES_NAMESPACE, null)
+                deployment = appsApi.readNamespacedDeployment(name.name, KUBERNETES_NAMESPACE).execute()
             } catch (ex: ApiException) {
                 LOG.error("Failed to read deployment: $name", ex)
             }
@@ -422,27 +394,14 @@ class DeploymentManager {
 
     fun getDockerRegistryPort(): Int {
         val api = CoreV1Api()
-        var service: V1Service? = api.readNamespacedService(System.getenv("DOCKER_REGISTRY_SERVICE_NAME"), KUBERNETES_NAMESPACE, null)
+        var service: V1Service? = api.readNamespacedService(System.getenv("DOCKER_REGISTRY_SERVICE_NAME"), KUBERNETES_NAMESPACE).execute()
         return service?.spec?.ports?.firstNotNullOfOrNull { it.nodePort } ?: throw IllegalStateException("Registry port unknown")
     }
 
     fun getPod(deploymentName: InstanceName): V1Pod? {
         try {
             val coreApi = CoreV1Api()
-            val pods = coreApi.listNamespacedPod(
-                KUBERNETES_NAMESPACE,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                TIMEOUT_SECONDS,
-                false
-            )
+            val pods = coreApi.listNamespacedPod(KUBERNETES_NAMESPACE).timeoutSeconds(TIMEOUT_SECONDS).execute()
             for (pod in pods.items) {
                 if (!pod.metadata!!.name!!.startsWith(deploymentName.name)) continue
                 return pod
@@ -457,28 +416,15 @@ class DeploymentManager {
     fun getPodLogs(deploymentName: InstanceName): String? {
         try {
             val coreApi = CoreV1Api()
-            val pods = coreApi.listNamespacedPod(
-                KUBERNETES_NAMESPACE,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                TIMEOUT_SECONDS,
-                false
-            )
+            val pods = coreApi.listNamespacedPod(KUBERNETES_NAMESPACE).timeoutSeconds(TIMEOUT_SECONDS).execute()
             for (pod in pods.items) {
                 if (!pod.metadata!!.name!!.startsWith(deploymentName.name)) continue
-                return coreApi.readNamespacedPodLog(
-                    pod.metadata!!.name,
-                    KUBERNETES_NAMESPACE,
-                    pod.spec!!.containers[0].name,
-                    null, null, null, "true", null, null, 10000, null
-                )
+                return coreApi
+                    .readNamespacedPodLog(pod.metadata!!.name,KUBERNETES_NAMESPACE)
+                    .container(pod.spec!!.containers[0].name)
+                    .pretty("true")
+                    .tailLines(10_000)
+                    .execute()
             }
         } catch (e: Exception) {
             LOG.error("", e)
@@ -502,20 +448,10 @@ class DeploymentManager {
 
     fun getEvents(deploymentName: String?): List<CoreV1Event> {
         if (deploymentName == null) return emptyList()
-        val events: CoreV1EventList = CoreV1Api().listNamespacedEvent(
-            KUBERNETES_NAMESPACE,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            TIMEOUT_SECONDS,
-            false
-        )
+        val events: CoreV1EventList = CoreV1Api()
+            .listNamespacedEvent(KUBERNETES_NAMESPACE)
+            .timeoutSeconds(TIMEOUT_SECONDS)
+            .execute()
         return events.items
             .filter { (it.involvedObject.name ?: "").contains(deploymentName) }
     }
@@ -547,26 +483,13 @@ class DeploymentManager {
     ): Boolean {
         val originalDeploymentName = WORKSPACE_CLIENT_DEPLOYMENT_NAME
         val appsApi = AppsV1Api()
-        val deployments = appsApi.listNamespacedDeployment(
-            KUBERNETES_NAMESPACE,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            5,
-            false
-        )
+        val deployments = appsApi.listNamespacedDeployment(KUBERNETES_NAMESPACE).timeoutSeconds(5).execute()
         val deploymentExists =
             deployments.items.stream().anyMatch { d: V1Deployment -> instanceName.name == d.metadata!!.name }
         if (!deploymentExists) {
 //            long numExisting = deployments.getItems().stream().filter(d -> d.getMetadata().getName().startsWith(personalDeploymentPrefix)).count();
 //            if (numExisting > 10) throw new RuntimeException("Too many existing deployments");
-            val deployment = appsApi.readNamespacedDeployment(originalDeploymentName, KUBERNETES_NAMESPACE, null)
+            val deployment = appsApi.readNamespacedDeployment(originalDeploymentName, KUBERNETES_NAMESPACE).execute()
             deployment.metadata!!.creationTimestamp(null)
             deployment.metadata!!.managedFields = null
             deployment.metadata!!.uid = null
@@ -617,26 +540,13 @@ class DeploymentManager {
             loadWorkspaceSpecificValues(workspace, deployment)
             println("Creating deployment: ")
             println(Yaml.dump(deployment))
-            appsApi.createNamespacedDeployment(KUBERNETES_NAMESPACE, deployment, null, null, null, null)
+            appsApi.createNamespacedDeployment(KUBERNETES_NAMESPACE, deployment).execute()
         }
         val coreApi = CoreV1Api()
-        val services = coreApi.listNamespacedService(
-            KUBERNETES_NAMESPACE,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            TIMEOUT_SECONDS,
-            false
-        )
+        val services = coreApi.listNamespacedService(KUBERNETES_NAMESPACE).timeoutSeconds(TIMEOUT_SECONDS).execute()
         val serviceExists = services.items.stream().anyMatch { s: V1Service -> instanceName.name == s.metadata!!.name }
         if (!serviceExists) {
-            val service = coreApi.readNamespacedService(originalDeploymentName, KUBERNETES_NAMESPACE, null)
+            val service = coreApi.readNamespacedService(originalDeploymentName, KUBERNETES_NAMESPACE).execute()
             service.metadata!!.putAnnotationsItem("kubectl.kubernetes.io/last-applied-configuration", null)
             service.metadata!!.managedFields = null
             service.metadata!!.uid = null
@@ -655,7 +565,7 @@ class DeploymentManager {
             service.spec!!.putSelectorItem("component", instanceName.name)
             println("Creating service: ")
             println(Yaml.dump(service))
-            coreApi.createNamespacedService(KUBERNETES_NAMESPACE, service, null, null, null, null)
+            coreApi.createNamespacedService(KUBERNETES_NAMESPACE, service).execute()
         }
         return true
     }

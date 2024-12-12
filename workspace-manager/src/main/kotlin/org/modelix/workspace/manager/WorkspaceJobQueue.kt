@@ -102,14 +102,15 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
             workspaceHash2job.values.associateBy { it.kubernetesJobName }
         }
         val existingJobs: Map<String?, V1Job> = BatchV1Api()
-            .listNamespacedJob(KUBERNETES_NAMESPACE, null, null, null, null, null, null, null, null, null, null, false)
+            .listNamespacedJob(KUBERNETES_NAMESPACE)
+            .execute()
             .items.filter { it.metadata?.name?.startsWith(JOB_PREFIX) == true }
             .associateBy { it.metadata?.name }
 
         val unexpected: Map<String?, V1Job> = existingJobs - expectedJobs.keys
         for (toRemove in unexpected) {
             expectedJobs[toRemove.key]?.updateLog()
-            BatchV1Api().deleteNamespacedJob(toRemove.key, KUBERNETES_NAMESPACE, null, null, null, null, null, null)
+            BatchV1Api().deleteNamespacedJob(toRemove.key, KUBERNETES_NAMESPACE).execute()
         }
 
         val missingJobs: Map<String?, Job> = expectedJobs - existingJobs.keys
@@ -122,7 +123,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
             val yamlString = missingJob.generateJobYaml()
             try {
                 val job: V1Job = Yaml.loadAs(yamlString, V1Job::class.java)
-                BatchV1Api().createNamespacedJob(KUBERNETES_NAMESPACE, job, null, null, null, null)
+                BatchV1Api().createNamespacedJob(KUBERNETES_NAMESPACE, job).execute()
                 missingJob.kubernetesJob = job
                 missingJob.status = WorkspaceBuildStatus.Queued
             } catch (ex: Exception) {
@@ -134,21 +135,20 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
     private fun getPodLogs(podNamePrefix: String): String? {
         try {
             val coreApi = CoreV1Api()
-            val pods = coreApi
-                .listNamespacedPod(KUBERNETES_NAMESPACE, null, null, null, null, null, null, null, null, null, null, false)
+            val pods = coreApi.listNamespacedPod(KUBERNETES_NAMESPACE).execute()
             val matchingPods = pods.items.filter { it.metadata!!.name!!.startsWith(podNamePrefix) }
             if (matchingPods.isEmpty()) return null
-            return matchingPods.map { pod ->
+            return matchingPods.joinToString("\n----------------------------------------------------------------------------\n") { pod ->
                 try {
-                    coreApi.readNamespacedPodLog(
-                        pod.metadata!!.name,
-                        KUBERNETES_NAMESPACE,
-                        pod.spec!!.containers[0].name,
-                        null, null, null, "true", null, null, 10000, false)
+                    coreApi.readNamespacedPodLog(pod.metadata!!.name, KUBERNETES_NAMESPACE)
+                        .container(pod.spec!!.containers[0].name)
+                        .pretty("true")
+                        .tailLines(10_000)
+                        .execute()
                 } catch (ex: Exception) {
                     ex.stackTraceToString()
                 }
-            }.joinToString("\n----------------------------------------------------------------------------\n")
+            }
         } catch (ex: Exception) {
             return ex.stackTraceToString()
         }

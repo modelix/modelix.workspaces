@@ -8,6 +8,10 @@ application {
     mainClass.set("org.modelix.workspace.job.MainKt")
 }
 
+tasks.distTar {
+    archiveFileName = "workspace-job.tar"
+}
+
 dependencies {
     implementation(libs.bundles.ktor.client)
     implementation(libs.ktor.serialization.kotlinx.json)

@@ -13,28 +13,29 @@
  */
 package org.modelix.workspaces
 
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import org.modelix.authorization.KeycloakResourceType
-import org.modelix.authorization.KeycloakScope
-import org.modelix.authorization.serviceAccountTokenProvider
 import org.modelix.model.client.RestWebModelClient
 import org.modelix.model.persistent.HashUtil
 import org.modelix.model.persistent.SerializationUtil
 
-val workspaceResourceType = KeycloakResourceType("workspace", KeycloakScope.READ_WRITE_DELETE_LIST, createByUser = true)
-val workspaceListResource = KeycloakResourceType("list", setOf(KeycloakScope.ADD, KeycloakScope.READ, KeycloakScope.WRITE))
-    .createInstance("workspace-list")
-val workspaceUploadResourceType = KeycloakResourceType("workspace-upload", setOf(KeycloakScope.READ, KeycloakScope.DELETE), createByUser = true)
+interface WorkspacePersistence {
+    fun getWorkspaceIds(): Set<String>
+    fun newWorkspace(): Workspace
+    fun removeWorkspace(workspaceId: String)
+    fun getAllWorkspaces(): List<Workspace>
+    fun getWorkspaceForId(id: String): Workspace?
+    fun getWorkspaceForHash(hash: WorkspaceHash): WorkspaceAndHash?
+    fun update(workspace: Workspace): WorkspaceHash
+}
 
-class WorkspacePersistence {
+class ModelServerWorkspacePersistence(authTokenProvider: () -> String?) : WorkspacePersistence {
     private val WORKSPACE_LIST_KEY = "workspaces"
-    private val modelClient: RestWebModelClient = RestWebModelClient(getModelServerUrl(), authTokenProvider = serviceAccountTokenProvider)
+    private val modelClient: RestWebModelClient = RestWebModelClient(getModelServerUrl(), authTokenProvider = authTokenProvider)
 
     fun generateId(): String = SerializationUtil.longToHex(modelClient.idGenerator.generate())
 
-    fun getWorkspaceIds(): Set<String> {
+    override fun getWorkspaceIds(): Set<String> {
         val idString = modelClient.get(WORKSPACE_LIST_KEY)
         if (idString.isNullOrEmpty()) return setOf()
         return idString.split(",").toSet()
@@ -45,7 +46,7 @@ class WorkspacePersistence {
     }
 
     @Synchronized
-    fun newWorkspace(): Workspace {
+    override fun newWorkspace(): Workspace {
         val workspace = Workspace(
             id = generateId(),
             modelRepositories = listOf(ModelRepository(id = "default"))
@@ -56,15 +57,19 @@ class WorkspacePersistence {
     }
 
     @Synchronized
-    fun removeWorkspace(workspaceId: String) {
+    override fun removeWorkspace(workspaceId: String) {
         setWorkspaceIds(getWorkspaceIds() - workspaceId)
     }
 
     private fun key(workspaceId: String) = "workspace-$workspaceId"
 
-    fun getWorkspaceForId(id: String): WorkspaceAndHash? {
+    override fun getWorkspaceForId(id: String): Workspace? {
         require(id.matches(Regex("[a-f0-9]{9,16}"))) { "Invalid workspace ID: $id" }
-        return getWorkspaceForIdOrHash(id)
+        return getWorkspaceForIdOrHash(id)?.workspace
+    }
+
+    override fun getAllWorkspaces(): List<Workspace> {
+        return getWorkspaceIds().mapNotNull { getWorkspaceForId(it) }
     }
 
     @Synchronized
@@ -94,13 +99,13 @@ class WorkspacePersistence {
     }
 
     @Synchronized
-    fun getWorkspaceForHash(hash: WorkspaceHash): WorkspaceAndHash? {
+    override fun getWorkspaceForHash(hash: WorkspaceHash): WorkspaceAndHash? {
         val json = modelClient.get(hash.toString()) ?: return null
         return Json.decodeFromString<Workspace>(json).withHash(hash)
     }
 
     @Synchronized
-    fun update(workspace: Workspace): WorkspaceHash {
+    override fun update(workspace: Workspace): WorkspaceHash {
         val mpsVersion = workspace.mpsVersion
         require(mpsVersion == null || mpsVersion.matches(Regex("""20\d\d\.\d"""))) {
             "Invalid major MPS version: '$mpsVersion'. Examples for valid values: '2020.3', '2021.1', '2021.2'."

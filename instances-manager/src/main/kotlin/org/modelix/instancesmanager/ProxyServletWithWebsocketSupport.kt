@@ -22,14 +22,18 @@ import org.eclipse.jetty.websocket.api.WebSocketPolicy
 import org.eclipse.jetty.websocket.client.ClientUpgradeRequest
 import org.eclipse.jetty.websocket.client.WebSocketClient
 import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest
+import org.eclipse.jetty.websocket.servlet.ServletUpgradeResponse
 import org.eclipse.jetty.websocket.servlet.WebSocketCreator
 import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory
+import org.modelix.model.api.runSynchronized
 import java.io.IOException
 import java.net.URI
 import java.nio.ByteBuffer
 import javax.servlet.ServletException
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
+
+private val LOG = mu.KotlinLogging.logger {}
 
 abstract class ProxyServletWithWebsocketSupport : ProxyServlet() {
     protected open fun dataTransferred(clientSession: Session?, proxySession: Session?) {}
@@ -44,10 +48,6 @@ abstract class ProxyServletWithWebsocketSupport : ProxyServlet() {
         }
     }
 
-    /**
-     * @see javax.servlet.GenericServlet.init
-     */
-    @Throws(ServletException::class)
     override fun init() {
         super.init()
         try {
@@ -78,10 +78,6 @@ abstract class ProxyServletWithWebsocketSupport : ProxyServlet() {
         }
     }
 
-    /**
-     * @see javax.servlet.http.HttpServlet.service
-     */
-    @Throws(ServletException::class, IOException::class)
     override fun service(request: HttpServletRequest, response: HttpServletResponse) {
         if (factory!!.isUpgradeRequest(request, response)) {
             // We have an upgrade request
@@ -103,87 +99,13 @@ abstract class ProxyServletWithWebsocketSupport : ProxyServlet() {
     }
 
     protected abstract fun redirect(request: ServletUpgradeRequest): URI?
+
     fun configure(factory: WebSocketServletFactory?) {
         factory!!.policy.maxTextMessageSize = 50 * 1024 * 1024
         factory.policy.maxBinaryMessageSize = 50 * 1024 * 1024
-        factory.creator = WebSocketCreator { req, resp ->
-            val redirectURL = redirect(req) ?: return@WebSocketCreator null
-            object : WebSocketListener {
-                private val client = WebSocketClient()
-                private var sessionA: Session? = null
-                private var sessionB: Session? = null
-                override fun onWebSocketConnect(session: Session) {
-                    sessionA = session
-                    try {
-                        client.start()
-                        client.policy.maxTextMessageSize = 50 * 1024 * 1024
-                        client.policy.maxBinaryMessageSize = 50 * 1024 * 1024
-                        val redirectURL = redirect(req)
-                        client.connect(object : WebSocketListener {
-                            override fun onWebSocketBinary(payload: ByteArray, offset: Int, len: Int) {
-                                try {
-                                    sessionA!!.remote.sendBytes(ByteBuffer.wrap(payload, offset, len))
-                                    dataTransferred(sessionA, sessionB)
-                                } catch (e: IOException) {
-                                    throw RuntimeException(e)
-                                }
-                            }
-
-                            override fun onWebSocketText(message: String) {
-                                try {
-                                    sessionA!!.remote.sendString(message)
-                                    dataTransferred(sessionA, sessionB)
-                                } catch (e: IOException) {
-                                    throw RuntimeException(e)
-                                }
-                            }
-
-                            override fun onWebSocketClose(statusCode: Int, reason: String) {
-                                sessionA!!.close(statusCode, reason)
-                            }
-
-                            override fun onWebSocketConnect(session: Session) {
-                                sessionB = session
-                            }
-
-                            override fun onWebSocketError(cause: Throwable) {
-                                LOG.error("", cause)
-                            }
-                        }, redirectURL, ClientUpgradeRequest()).get()
-                    } catch (e: Exception) {
-                        throw RuntimeException(e)
-                    }
-                }
-
-                override fun onWebSocketText(message: String) {
-                    try {
-                        sessionB!!.remote.sendString(message)
-                    } catch (e: IOException) {
-                        throw RuntimeException(e)
-                    }
-                }
-
-                override fun onWebSocketBinary(payload: ByteArray, offset: Int, len: Int) {
-                    try {
-                        sessionB!!.remote.sendBytes(ByteBuffer.wrap(payload, offset, len))
-                    } catch (e: IOException) {
-                        throw RuntimeException(e)
-                    }
-                }
-
-                override fun onWebSocketClose(statusCode: Int, reason: String) {
-                    sessionB!!.close(statusCode, reason)
-                    try {
-                        client.stop()
-                    } catch (e: Exception) {
-                        LOG.error("", e)
-                    }
-                }
-
-                override fun onWebSocketError(cause: Throwable) {
-                    LOG.error("", cause)
-                }
-            }
+        factory.creator = WebSocketCreator { requestA, responseA ->
+            val redirectURL = redirect(requestA) ?: return@WebSocketCreator null
+            WebsocketProxy(redirectURL, requestA, responseA)
         }
     }
 
@@ -195,7 +117,115 @@ abstract class ProxyServletWithWebsocketSupport : ProxyServlet() {
         }
     }
 
-    companion object {
-        private val LOG = mu.KotlinLogging.logger {}
+    private inner class WebsocketProxy(val redirectedURL: URI, val requestA: ServletUpgradeRequest, val responseA: ServletUpgradeResponse) : WebSocketListener {
+        private val client = WebSocketClient()
+        private var sessionA: Session? = null
+        private var sessionB: Session? = null
+        private val pendingBinaryMessages: MutableList<ByteBuffer> = ArrayList()
+        private val pendingTextMessages: MutableList<String> = ArrayList()
+        private val lock = Any()
+
+        init {
+            check(!responseA.isCommitted) { "Response is already commited" }
+
+            client.policy.maxTextMessageSize = 50 * 1024 * 1024
+            client.policy.maxBinaryMessageSize = 50 * 1024 * 1024
+            client.start()
+            val requestB = ClientUpgradeRequest()
+            requestB.setSubProtocols(requestA.subProtocols)
+            requestB.extensions = requestA.extensions
+
+            sessionB = client.connect(object : WebSocketListener {
+                override fun onWebSocketBinary(payload: ByteArray, offset: Int, len: Int) {
+                    val message = ByteBuffer.wrap(payload, offset, len)
+                    runSynchronized(lock) {
+                        if (sessionA == null) {
+                            pendingBinaryMessages += message
+                        } else {
+                            sessionA!!.remote.sendBytes(message)
+                            dataTransferred(sessionA, sessionB)
+                        }
+                    }
+                }
+
+                override fun onWebSocketText(message: String) {
+                    runSynchronized(lock) {
+                        if (sessionA == null) {
+                            pendingTextMessages += message
+                        } else {
+                            sessionA!!.remote.sendString(message)
+                            dataTransferred(sessionA, sessionB)
+                        }
+                    }
+                }
+
+                override fun onWebSocketClose(statusCode: Int, reason: String) {
+                    sessionA?.close(statusCode, reason)
+                }
+
+                override fun onWebSocketConnect(session: Session) {
+                    sessionB = session
+                }
+
+                override fun onWebSocketError(cause: Throwable) {
+                    LOG.error("", cause)
+                }
+            }, redirectedURL, requestB).get()
+
+            val responseB = sessionB!!.upgradeResponse
+            responseB.acceptedSubProtocol?.let { responseA.acceptedSubProtocol = it }
+            responseB.extensions?.let { responseA.extensions = it }
+        }
+
+        private fun processPendingMessages() {
+            runSynchronized(lock) {
+                if (sessionA != null) {
+                    for (message in pendingBinaryMessages) {
+                        sessionA!!.remote.sendBytes(message)
+                    }
+                    pendingBinaryMessages.clear()
+                    for (message in pendingTextMessages) {
+                        sessionA!!.remote.sendString(message)
+                    }
+                    pendingTextMessages.clear()
+                }
+            }
+        }
+
+        override fun onWebSocketConnect(sessionA: Session) {
+            runSynchronized(lock) {
+                this.sessionA = sessionA
+                processPendingMessages()
+            }
+        }
+
+        override fun onWebSocketText(message: String) {
+            try {
+                sessionB!!.remote.sendString(message)
+            } catch (e: IOException) {
+                throw RuntimeException(e)
+            }
+        }
+
+        override fun onWebSocketBinary(payload: ByteArray, offset: Int, len: Int) {
+            try {
+                sessionB!!.remote.sendBytes(ByteBuffer.wrap(payload, offset, len))
+            } catch (e: IOException) {
+                throw RuntimeException(e)
+            }
+        }
+
+        override fun onWebSocketClose(statusCode: Int, reason: String) {
+            sessionB?.close(statusCode, reason)
+            try {
+                client.stop()
+            } catch (e: Exception) {
+                LOG.error("", e)
+            }
+        }
+
+        override fun onWebSocketError(cause: Throwable) {
+            LOG.error("", cause)
+        }
     }
 }

@@ -13,17 +13,13 @@
  */
 package org.modelix.workspaces
 
+import com.charleskorn.kaml.Yaml
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import org.jasypt.util.text.AES256TextEncryptor
 import org.modelix.model.persistent.HashUtil
-import java.io.File
-import java.nio.charset.StandardCharsets
-import java.security.SecureRandom
-import java.util.*
 
-const val DEFAULT_MPS_VERSION = "2020.3"
+const val DEFAULT_MPS_VERSION = "2024.1"
 
 @Serializable
 data class Workspace(val id: String,
@@ -37,10 +33,13 @@ data class Workspace(val id: String,
                      val uploads: List<String> = ArrayList(),
                      val ignoredModules: List<String> = ArrayList(),
                      val additionalGenerationDependencies: List<GenerationDependency> = ArrayList(),
-                     val loadUsedModulesOnly: Boolean = true,
-                     val sharedInstances: List<SharedInstance> = emptyList()
+                     val loadUsedModulesOnly: Boolean = false,
+                     val sharedInstances: List<SharedInstance> = emptyList(),
+                     @Deprecated("Replaced by query parameter")
+                     val waitForIndexer: Boolean = true
 ) {
     fun uploadIds() = uploads.map { UploadId(it) }
+    fun toYaml() = Yaml.default.encodeToString(this).replace("\nwaitForIndexer: false", "").replace("\nwaitForIndexer: true", "")
 }
 
 /**
@@ -77,6 +76,7 @@ fun Workspace.withHash() = WorkspaceAndHash(this, WorkspaceHash(HashUtil.sha256(
 @Serializable
 data class GenerationDependency(val from: String, val to: String)
 
+@Serializable
 @JvmInline
 value class WorkspaceHash(val hash: String) {
     init {
@@ -84,6 +84,10 @@ value class WorkspaceHash(val hash: String) {
     }
     override fun toString(): String {
         return hash
+    }
+
+    fun toValidImageTag(): String {
+        return hash.replace("*", "")
     }
 }
 

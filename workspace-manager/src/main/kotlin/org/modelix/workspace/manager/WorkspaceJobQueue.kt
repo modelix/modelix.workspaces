@@ -14,23 +14,34 @@
 
 package org.modelix.workspace.manager
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.http.HttpStatusCode
 import io.kubernetes.client.openapi.Configuration
 import io.kubernetes.client.openapi.apis.BatchV1Api
 import io.kubernetes.client.openapi.apis.CoreV1Api
 import io.kubernetes.client.openapi.models.V1Job
 import io.kubernetes.client.util.ClientBuilder
 import io.kubernetes.client.util.Yaml
-import kotlinx.coroutines.*
-import org.modelix.authorization.serviceAccountTokenProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.modelix.model.persistent.HashUtil
+import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
 import java.io.IOException
-import java.util.*
+import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 
-class WorkspaceJobQueue {
+class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
 
     private val workspaceHash2job: MutableMap<WorkspaceHash, Job> = HashMap()
     private val coroutinesScope = CoroutineScope(Dispatchers.Default)
@@ -54,6 +65,19 @@ class WorkspaceJobQueue {
                     LOG.error(ex) { "" }
                 }
             }
+        }
+    }
+
+    private fun baseImageExists(mpsVersion: String): Boolean {
+        return try {
+            runBlocking {
+                HttpClient(CIO).get("http://${HELM_PREFIX}docker-registry:5000/v2/modelix/workspace-client-baseimage/manifests/${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion ") {
+                    header("Accept", "application/vnd.oci.image.manifest.v1+json")
+                }.status == HttpStatusCode.OK
+            }
+        } catch (ex: Throwable) {
+            LOG.error(ex) { "Failed to check if the base image for MPS version $mpsVersion exists" }
+            false
         }
     }
 
@@ -95,20 +119,25 @@ class WorkspaceJobQueue {
                 WorkspaceBuildStatus.FailedBuild, WorkspaceBuildStatus.FailedZip, WorkspaceBuildStatus.AllSuccessful, WorkspaceBuildStatus.ZipSuccessful -> continue
             }
 
-            val job: V1Job = Yaml.loadAs(missingJob.generateJobYaml(), V1Job::class.java)
-
-            BatchV1Api().createNamespacedJob(KUBERNETES_NAMESPACE, job, null, null, null, null)
-            missingJob.kubernetesJob = job
-            missingJob.status = WorkspaceBuildStatus.Queued
+            val yamlString = missingJob.generateJobYaml()
+            try {
+                val job: V1Job = Yaml.loadAs(yamlString, V1Job::class.java)
+                BatchV1Api().createNamespacedJob(KUBERNETES_NAMESPACE, job, null, null, null, null)
+                missingJob.kubernetesJob = job
+                missingJob.status = WorkspaceBuildStatus.Queued
+            } catch (ex: Exception) {
+                throw RuntimeException("Cannot create job:\n$yamlString", ex)
+            }
         }
     }
 
-    private fun getPodLogs(podNamePrefix: String): String {
+    private fun getPodLogs(podNamePrefix: String): String? {
         try {
             val coreApi = CoreV1Api()
             val pods = coreApi
                 .listNamespacedPod(KUBERNETES_NAMESPACE, null, null, null, null, null, null, null, null, null, null, false)
             val matchingPods = pods.items.filter { it.metadata!!.name!!.startsWith(podNamePrefix) }
+            if (matchingPods.isEmpty()) return null
             return matchingPods.map { pod ->
                 try {
                     coreApi.readNamespacedPodLog(
@@ -143,7 +172,7 @@ class WorkspaceJobQueue {
 
         private var cachedPodLog: String? = null
         fun updateLog() {
-            val log = getPodLogs(kubernetesJobName)
+            val log = getPodLogs(kubernetesJobName) ?: return
             cachedPodLog = log
             val lastStatusAsText = Regex("""###${WorkspaceBuildStatus::class.simpleName} = (.+)###""")
                 .findAll(log).lastOrNull()?.let { it.groupValues[1] }
@@ -159,15 +188,12 @@ class WorkspaceJobQueue {
         }
 
         fun generateJobYaml(jobName: String = kubernetesJobName): String {
-            var imageVersion = IMAGE_VERSION
             val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
-            if (mpsVersion.matches("""20\d\d\.\d""".toRegex())) {
-                // e.g. 0.0.1 becomes 0.0.1-2020.3
-                imageVersion = "$imageVersion-$mpsVersion"
-            }
 
             val memoryLimit = workspace.memoryLimit
-            val jwtToken = serviceAccountTokenProvider() // TODO generate token with less permissions
+            val jwtToken = tokenGenerator(workspace.workspace)
+            val dockerConfigSecretName = System.getenv("DOCKER_CONFIG_SECRET_NAME")
+
             return """
                 apiVersion: batch/v1
                 kind: Job
@@ -185,9 +211,16 @@ class WorkspaceJobQueue {
                         effect: "NoExecute"                    
                       containers:
                       - name: wsjob
-                        image: $IMAGE_NAME:$imageVersion
-                        command: ["/workspace-job/bin/workspace-job"]
+                        image: $IMAGE_NAME:$IMAGE_VERSION
                         env:
+                        - name: TARGET_REGISTRY
+                          value: ${HELM_PREFIX}docker-registry:5000
+                        - name: WORKSPACE_DESTINATION_IMAGE_NAME
+                          value: modelix-workspaces/ws${workspace.workspace.id}
+                        - name: WORKSPACE_DESTINATION_IMAGE_TAG
+                          value: ${workspace.hash().toValidImageTag()}
+                        - name: WORKSPACE_CONTEXT_URL
+                          value: http://${HELM_PREFIX}workspace-manager:28104/${workspace.hash().hash.replace("*", "%2A")}/context.tar.gz
                         - name: modelix_workspace_id
                           value: ${workspace.id}  
                         - name: modelix_workspace_hash
@@ -195,15 +228,45 @@ class WorkspaceJobQueue {
                         - name: modelix_workspace_server
                           value: http://${HELM_PREFIX}workspace-manager:28104/      
                         - name: INITIAL_JWT_TOKEN
-                          value: $jwtToken                   
+                          value: $jwtToken
+                        - name: BASEIMAGE_CONTEXT_URL
+                          value: http://${HELM_PREFIX}workspace-manager:28104/baseimage/$mpsVersion/context.tar.gz
+                        - name: BASEIMAGE_TARGET
+                          value: ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
                         resources: 
                           requests:
                             memory: $memoryLimit
                             cpu: "0.1"
                           limits:
                             memory: $memoryLimit
-                            cpu: "1.0"                        
+                            cpu: "1.0" 
+                        ${if (dockerConfigSecretName != null) """
+                        volumeMounts:
+                        - name: "docker-config"
+                          mountPath: /kaniko/.docker/config.json
+                          subPath: config.json
+                          readOnly: true
+                        - name: "docker-proxy-ca"
+                          mountPath: /kaniko/ssl/certs/docker-proxy-ca.crt
+                          subPath: docker-proxy-ca.crt
+                          readOnly: true
+                        """ else ""}
                       restartPolicy: Never
+                      ${if (dockerConfigSecretName != null) """
+                      volumes:
+                      - name: "docker-config"
+                        secret:
+                          secretName: "$dockerConfigSecretName"
+                          items:
+                            - key: .dockerconfigjson
+                              path: config.json
+                      - name: "docker-proxy-ca"
+                        secret:
+                          secretName: "$dockerConfigSecretName"
+                          items:
+                            - key: caCertificate
+                              path: docker-proxy-ca.crt
+                      """ else ""}
                   backoffLimit: 2
             """.trimIndent()
         }

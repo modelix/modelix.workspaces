@@ -1,9 +1,6 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 plugins {
     application
     alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.shadow)
 }
 
 group = "org.modelix"
@@ -15,10 +12,6 @@ application {
 
 repositories {
     mavenCentral()
-}
-
-tasks.withType<ShadowJar> {
-    archiveVersion.set("latest")
 }
 
 dependencies {
@@ -33,6 +26,7 @@ dependencies {
     implementation(libs.modelix.model.client)
     implementation(project(":workspaces"))
     implementation(libs.modelix.authorization)
+    implementation(libs.modelix.model.server)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
     implementation(libs.kotlinx.coroutines.core)
@@ -40,6 +34,9 @@ dependencies {
     implementation(libs.ktor.server.html.builder)
     implementation(libs.kotlin.logging)
     implementation(libs.kubernetes.client)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.auth)
     implementation(libs.commons.io)
     implementation(libs.commons.lang3)
     implementation(libs.json)
@@ -52,4 +49,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.named("assemble") {
+    dependsOn("installDist")
 }

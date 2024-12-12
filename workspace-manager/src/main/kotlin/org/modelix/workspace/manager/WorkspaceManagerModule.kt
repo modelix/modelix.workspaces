@@ -15,30 +15,116 @@
 package org.modelix.workspace.manager
 
 import com.charleskorn.kaml.Yaml
-import io.ktor.http.*
-import io.ktor.http.content.*
-import io.ktor.serialization.kotlinx.json.*
-import io.ktor.server.application.*
-import io.ktor.server.html.*
-import io.ktor.server.plugins.contentnegotiation.*
-import io.ktor.server.plugins.cors.routing.*
-import io.ktor.server.request.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
-import io.ktor.utils.io.jvm.javaio.*
-import kotlinx.html.*
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.expectSuccess
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.forms.submitForm
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
+import io.ktor.http.content.streamProvider
+import io.ktor.http.parameters
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.call
+import io.ktor.server.application.install
+import io.ktor.server.html.respondHtml
+import io.ktor.server.http.content.staticResources
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.request.receiveChannel
+import io.ktor.server.request.receiveMultipart
+import io.ktor.server.request.receiveParameters
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondFile
+import io.ktor.server.response.respondOutputStream
+import io.ktor.server.response.respondRedirect
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.Routing
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.put
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
+import io.ktor.util.pipeline.PipelineContext
+import io.ktor.utils.io.jvm.javaio.copyTo
+import kotlinx.html.DIV
+import kotlinx.html.FormEncType
+import kotlinx.html.FormMethod
+import kotlinx.html.HTML
+import kotlinx.html.InputType
+import kotlinx.html.a
+import kotlinx.html.b
+import kotlinx.html.body
+import kotlinx.html.br
+import kotlinx.html.div
+import kotlinx.html.form
+import kotlinx.html.h1
+import kotlinx.html.h2
+import kotlinx.html.head
+import kotlinx.html.hiddenInput
+import kotlinx.html.html
+import kotlinx.html.i
+import kotlinx.html.img
+import kotlinx.html.input
+import kotlinx.html.li
+import kotlinx.html.link
+import kotlinx.html.meta
+import kotlinx.html.p
+import kotlinx.html.postForm
+import kotlinx.html.pre
+import kotlinx.html.span
 import kotlinx.html.stream.createHTML
+import kotlinx.html.style
+import kotlinx.html.submitInput
+import kotlinx.html.table
+import kotlinx.html.td
+import kotlinx.html.textArea
+import kotlinx.html.th
+import kotlinx.html.thead
+import kotlinx.html.title
+import kotlinx.html.tr
+import kotlinx.html.ul
+import kotlinx.html.unsafe
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.io.FileUtils
-import org.modelix.authorization.*
+import org.modelix.authorization.ModelixAuthorization
+import org.modelix.authorization.ModelixJWTUtil
+import org.modelix.authorization.checkPermission
+import org.modelix.authorization.getUserName
+import org.modelix.authorization.hasPermission
+import org.modelix.authorization.jwt
+import org.modelix.authorization.permissions.PermissionSchemaBase
+import org.modelix.authorization.requiresLogin
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
-import org.modelix.workspaces.*
+import org.modelix.model.server.ModelServerPermissionSchema
+import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
+import org.modelix.workspaces.SharedInstance
+import org.modelix.workspaces.UploadId
+import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.WorkspaceAndHash
+import org.modelix.workspaces.WorkspaceBuildStatus
+import org.modelix.workspaces.WorkspaceHash
+import org.modelix.workspaces.WorkspaceProgressItems
+import org.modelix.workspaces.WorkspacesPermissionSchema
 import org.zeroturnaround.zip.ZipUtil
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.GZIPOutputStream
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 fun Application.workspaceManagerModule() {
@@ -49,13 +135,19 @@ fun Application.workspaceManagerModule() {
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
     install(Routing)
-    installAuthentication()
+    install(ModelixAuthorization) {
+        permissionSchema = WorkspacesPermissionSchema.SCHEMA
+        accessControlPersistence = manager.accessControlPersistence
+        installStatusPages = true
+    }
     install(ContentNegotiation) {
         json()
     }
 
     routing {
-        requiresPermission(workspaceListResource, KeycloakScope.READ) {
+        staticResources("static/", basePackage = "org.modelix.workspace.static")
+
+        requiresLogin {
             get("/") {
                 call.respondHtmlSafe(HttpStatusCode.OK) {
                     head {
@@ -106,15 +198,14 @@ fun Application.workspaceManagerModule() {
                                 }
                                 manager.getWorkspaceIds()
                                     .filter {
-                                        KeycloakUtils.hasPermission(call.jwt()!!, it.workspaceIdAsResource(), KeycloakScope.LIST)
-                                            || KeycloakUtils.hasPermission(call.jwt()!!, it.workspaceIdAsResource(), KeycloakScope.READ)
+                                        call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(it).list)
                                     }
                                     .mapNotNull { manager.getWorkspaceForId(it) }.forEach { workspaceAndHash ->
                                         val workspace = workspaceAndHash.workspace
                                         val workspaceId = workspace.id
-                                        val canRead = KeycloakUtils.hasPermission(call.jwt()!!, workspaceId.workspaceIdAsResource(), KeycloakScope.READ)
-                                        val canWrite = KeycloakUtils.hasPermission(call.jwt()!!, workspaceId.workspaceIdAsResource(), KeycloakScope.READ)
-                                        val canDelete = KeycloakUtils.hasPermission(call.jwt()!!, workspaceId.workspaceIdAsResource(), KeycloakScope.DELETE)
+                                        val canRead = call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.read)
+                                        val canWrite = call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.write)
+                                        val canDelete = call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.delete)
                                         tr {
                                             td {
                                                 a(classes = "workspace-name") {
@@ -134,7 +225,7 @@ fun Application.workspaceManagerModule() {
                                             td {
                                                 if (canRead) {
                                                     a {
-                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/ide/"
+                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/ide/?waitForIndexer=true"
                                                         text("Open MPS")
                                                     }
                                                 }
@@ -142,7 +233,7 @@ fun Application.workspaceManagerModule() {
                                                     if (sharedInstance.allowWrite && !canWrite) continue
                                                     br {}
                                                     a {
-                                                        href = "../${workspaceInstanceUrl(workspaceAndHash, sharedInstance)}/ide/"
+                                                        href = "../${workspaceInstanceUrl(workspaceAndHash, sharedInstance)}/ide/?waitForIndexer=true"
                                                         text("Open MPS [${sharedInstance.name}]")
                                                     }
                                                 }
@@ -184,7 +275,7 @@ fun Application.workspaceManagerModule() {
                                             td {
                                                 if (canRead) {
                                                     a {
-                                                        href = "../model/history/workspace_$workspaceId/master/"
+                                                        href = "$workspaceId/model-history"
                                                         text("Model History")
                                                     }
                                                 }
@@ -205,7 +296,7 @@ fun Application.workspaceManagerModule() {
                                             }
                                         }
                                     }
-                                if (KeycloakUtils.hasPermission(call.jwt()!!, workspaceListResource, KeycloakScope.ADD)) {
+                                if (call.hasPermission(WorkspacesPermissionSchema.workspaces.add)) {
                                     tr {
                                         td {
                                             colSpan = "6"
@@ -222,12 +313,19 @@ fun Application.workspaceManagerModule() {
                                 }
                             }
                         }
+                        br {}
+                        div {
+                            a(href = "permissions/manage") {
+                                +"Manage Permissions"
+                            }
+                        }
                     }
                 }
             }
 
             get("{workspaceId}/hash") {
                 val workspaceId = call.parameters["workspaceId"]!!
+                call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).list)
                 val workspaceAndHash = manager.getWorkspaceForId(workspaceId)
                 if (workspaceAndHash == null) {
                     call.respond(HttpStatusCode.NotFound, "Workspace $workspaceId not found")
@@ -239,6 +337,7 @@ fun Application.workspaceManagerModule() {
             route("{workspaceId}/git/{repoOrUploadIndex}/") {
                 intercept(ApplicationCallPipeline.Call) {
                     val workspaceId = call.parameters["workspaceId"]!!
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.read)
                     val repoOrUploadIndex = call.parameters["repoOrUploadIndex"]!!
                     var repoIndex: Int? = null
                     var uploadId: UploadId? = null
@@ -289,46 +388,41 @@ fun Application.workspaceManagerModule() {
                 }
                 gitui()
             }
-        }
 
-        requiresPermission(workspaceListResource, KeycloakScope.ADD) {
             post("new") {
+                call.checkPermission(WorkspacesPermissionSchema.workspaces.add)
                 val jwt = call.jwt()!!
-                val workspace = manager.newWorkspace()
+                val workspace = manager.newWorkspace(ModelixJWTUtil().extractUserId(jwt))
                 call.respondRedirect("${workspace.id}/edit")
             }
-        }
 
-        route("uploads") {
-            get("{uploadId}") {
-                val uploadId = UploadId(call.parameters["uploadId"]!!)
-                val folder = manager.getUploadFolder(uploadId)
-                call.respondOutputStream(ContentType.Application.Zip) {
-                    ZipOutputStream(this).use { zip ->
-                        zip.copyFiles(folder, mapPath = { folder.toPath().parent.relativize(it)}, extractZipFiles = true)
+            route("uploads") {
+                get("{uploadId}") {
+                    val uploadId = UploadId(call.parameters["uploadId"]!!)
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId.id).read)
+                    val folder = manager.getUploadFolder(uploadId)
+                    call.respondOutputStream(ContentType.Application.Zip) {
+                        ZipOutputStream(this).use { zip ->
+                            zip.copyFiles(folder, mapPath = { folder.toPath().parent.relativize(it)}, extractZipFiles = true)
+                        }
                     }
                 }
             }
-        }
-
-        requiresLogin {
 
             route("{workspaceId}") {
+                fun PipelineContext<*, ApplicationCall>.workspaceId() = call.parameters["workspaceId"]!!
+
                 get("edit") {
-                    val id = call.parameters["workspaceId"]
-                    if (id == null) {
-                        call.respond(HttpStatusCode.BadRequest, "Workspace ID is missing")
-                        return@get
-                    }
-                    call.checkPermission(id.workspaceIdAsResource(), KeycloakScope.READ)
+                    val id = workspaceId()
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(id).config.read)
                     val workspaceAndHash = manager.getWorkspaceForId(id)
                     if (workspaceAndHash == null) {
                         call.respond(HttpStatusCode.NotFound, "Workspace $id not found")
                         return@get
                     }
                     val workspace = workspaceAndHash.workspace
-                    val yaml = Yaml.default.encodeToString(workspace)
-                    val canWrite = KeycloakUtils.hasPermission(call.jwt()!!, workspace.asResource(), KeycloakScope.WRITE)
+                    val yaml = workspace.toYaml()
+                    val canWrite = call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.write)
 
                     this.call.respondHtml(HttpStatusCode.OK) {
                         head {
@@ -357,7 +451,7 @@ fun Application.workspaceManagerModule() {
 //                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/project") { +"Open Web Interface" }
 //                                }
                                 div("menuItem") {
-                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/ide/") { +"Open MPS" }
+                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/ide/?waitForIndexer=true") { +"Open MPS" }
                                 }
                                 div("menuItem") {
                                     a("../../${workspaceInstanceUrl(workspaceAndHash)}/generator/") { +"Generator" }
@@ -415,8 +509,7 @@ fun Application.workspaceManagerModule() {
                                         }
                                         li {
                                             b { +"mpsVersion" }
-                                            +": This is experimental."
-                                            +" The workspace will be executed using a docker image from a Modelix release for a different MPS version."
+                                            +": MPS major version. Supported values: 2020.3, 2021.1, 2021.2, 2021.3, 2022.2, 2022.3, 2023.2, 2023.3, 2024.1"
                                         }
                                         li {
                                             b { +"modelRepositories" }
@@ -505,7 +598,7 @@ fun Application.workspaceManagerModule() {
                                 }
                                 table {
                                     for (upload in allUploads.toSortedMap()) {
-                                        val uploadResource = workspaceUploadResourceType.createInstance(upload.key)
+                                        val uploadResource = WorkspacesPermissionSchema.workspaces.uploads.upload(upload.key)
                                         tr {
                                             td { +upload.key }
                                             td { +uploadContent(upload) }
@@ -543,7 +636,7 @@ fun Application.workspaceManagerModule() {
                                                 }
                                             }
                                             td {
-                                                if (KeycloakUtils.hasPermission(call.jwt()!!, uploadResource, KeycloakScope.DELETE)) {
+                                                if (call.hasPermission(uploadResource.delete)) {
                                                     form {
                                                         action = "./delete-upload"
                                                         method = FormMethod.post
@@ -606,9 +699,9 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("update") {
-                    call.checkPermission(call.parameters["workspaceId"]!!.workspaceIdAsResource(), KeycloakScope.WRITE)
                     val yamlText = call.receiveParameters()["content"]
-                    val id = call.parameters["workspaceId"] ?: throw IllegalArgumentException("workspaceId missing")
+                    val id = workspaceId()
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(id).config.write)
                     if (yamlText == null) {
                         call.respond(HttpStatusCode.BadRequest, "Content missing")
                         return@post
@@ -626,12 +719,8 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("add-maven-dependency") {
-                    call.checkPermission(call.parameters["workspaceId"]!!.workspaceIdAsResource(), KeycloakScope.WRITE)
-                    val id = call.parameters["workspaceId"]
-                    if (id == null) {
-                        call.respond(HttpStatusCode.BadRequest, "Workspace ID is missing")
-                        return@post
-                    }
+                    val id = workspaceId()
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(id).config.write)
                     val workspaceAndHash = manager.getWorkspaceForId(id)
                     if (workspaceAndHash == null) {
                         call.respond(HttpStatusCode.NotFound, "Workspace $id not found")
@@ -648,9 +737,9 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("upload") {
-                    call.checkPermission(call.parameters["workspaceId"]!!.workspaceIdAsResource(), KeycloakScope.WRITE)
-                    val workspaceId = call.parameters["workspaceId"]!!
-                    call.checkPermission(workspaceId.workspaceIdAsResource(), KeycloakScope.WRITE)
+                    val workspaceId = workspaceId()
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.uploads.add)
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.write)
                     val workspace = manager.getWorkspaceForId(workspaceId)?.workspace
                     if (workspace == null) {
                         call.respondText("Workspace $workspaceId not found", ContentType.Text.Plain, HttpStatusCode.NotFound)
@@ -681,18 +770,18 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("use-upload") {
-                    call.checkPermission(call.parameters["workspaceId"]!!.workspaceIdAsResource(), KeycloakScope.WRITE)
-                    val workspaceId = call.parameters["workspaceId"]!!
+                    val workspaceId = workspaceId()
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.write)
                     val uploadId = call.receiveParameters()["uploadId"]!!
-                    call.checkPermission(workspaceUploadResourceType.createInstance(uploadId), KeycloakScope.READ)
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read)
                     val workspace = manager.getWorkspaceForId(workspaceId)?.workspace!!
                     manager.update(workspace.copy(uploads = workspace.uploads + uploadId))
                     call.respondRedirect("./edit")
                 }
 
                 post("remove-upload") {
-                    call.checkPermission(call.parameters["workspaceId"]!!.workspaceIdAsResource(), KeycloakScope.WRITE)
-                    val workspaceId = call.parameters["workspaceId"]!!
+                    val workspaceId = workspaceId()
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.write)
                     val uploadId = call.receiveParameters()["uploadId"]!!
                     val workspace = manager.getWorkspaceForId(workspaceId)?.workspace!!
                     manager.update(workspace.copy(uploads = workspace.uploads - uploadId))
@@ -700,15 +789,42 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("delete-upload") {
-                    call.checkPermission(call.parameters["workspaceId"]!!.workspaceIdAsResource(), KeycloakScope.WRITE)
                     val uploadId = UploadId(call.receiveParameters()["uploadId"]!!)
-                    call.checkPermission(workspaceUploadResourceType.createInstance(uploadId.id), KeycloakScope.DELETE)
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId.id).delete)
                     val allWorkspaces = manager.getWorkspaceIds().mapNotNull { manager.getWorkspaceForId(it)?.workspace }
                     for (workspace in allWorkspaces.filter { it.uploadIds().contains(uploadId) }) {
                         manager.update(workspace.copy(uploads = workspace.uploads - uploadId.id))
                     }
                     manager.deleteUpload(uploadId)
                     call.respondRedirect("./edit")
+                }
+
+                get("model-history") {
+                    // ensure the user has the necessary permission on the model-server
+                    val userId = call.getUserName()
+                    if (userId != null) {
+                        val permissionId = when {
+                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).modelRepository.write) -> ModelServerPermissionSchema.repository("workspace_${workspaceId()}").write
+                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).modelRepository.read) -> ModelServerPermissionSchema.repository("workspace_${workspaceId()}").read
+                            else -> null
+                        }
+                        if (permissionId != null) {
+                            HttpClient(CIO).submitForm(
+                                url = System.getenv("model_server_url") + "permissions/grant",
+                                formParameters = parameters {
+                                    append("userId", userId)
+                                    append("permissionId", permissionId.fullId)
+                                }
+                            ) {
+                                expectSuccess = true
+                                bearerAuth(manager.jwtUtil.createAccessToken("workspace-manager@modelix.org", listOf(
+                                    permissionId.fullId // for granting a permission to someone else it's sufficient to have that permission
+                                )))
+                            }
+                        }
+                    }
+
+                    call.respondRedirect("../../model/history/workspace_${workspaceId()}/master/")
                 }
             }
 
@@ -717,7 +833,7 @@ fun Application.workspaceManagerModule() {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val workspace = manager.getWorkspaceForHash(workspaceHash)?.workspace
                     if (workspace != null) {
-                        call.checkPermission(workspace.asResource(), KeycloakScope.READ)
+                        call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read)
                     }
                 }
 
@@ -795,11 +911,7 @@ fun Application.workspaceManagerModule() {
                                 if (job.status == WorkspaceBuildStatus.ZipSuccessful) {
                                     +"Failed to build the workspace. "
                                 }
-                                +"Workspace files ready are for download: "
-                                val fileName = "workspace.zip"
-                                a(href = fileName) {
-                                    +fileName
-                                }
+                                +"Workspace image is ready"
                             }
                         }
                     }
@@ -817,50 +929,152 @@ fun Application.workspaceManagerModule() {
                     call.respondText(job.getLog(), ContentType.Text.Plain, HttpStatusCode.OK)
                 }
 
-                put("workspace.zip") {
-                    // TODO check permission
+                get("context.tar.gz") {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
-                    val workspace = manager.getWorkspaceForHash(workspaceHash)
-                    if (workspace == null) {
-                        call.respondText("Workspace $workspaceHash not found", ContentType.Text.Plain, HttpStatusCode.NotFound)
-                    } else {
-                        val file = manager.getDownloadFile(workspaceHash).absoluteFile
-                        file.parentFile.mkdirs()
-                        FileOutputStream(file).use { out ->
-                            call.receiveChannel().copyTo(out)
-                        }
-                        call.respondText("OK")
-                    }
-                }
-
-                get("workspace.zip") {
-                    val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
-                    val workspace = manager.getWorkspaceForHash(workspaceHash)
-                    if (workspace == null) {
-                        call.respondText("Workspace $workspaceHash not found", ContentType.Text.Plain, HttpStatusCode.NotFound)
-                    } else {
-                        val file = manager.getDownloadFile(workspaceHash)
-                        if (file.exists()) {
-                            call.respondFile(file)
-                        } else {
-                            call.respondText("""File doesn't exist yet. <a href="queue">Start a build job for the workspace.</a>""", ContentType.Text.Html, HttpStatusCode.NotFound)
-                        }
+                    val workspace = manager.getWorkspaceForHash(workspaceHash)!!
+                    val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
+                    val jwtToken = manager.workspaceJobTokenGenerator(workspace.workspace)
+                    call.respondTarGz { tar ->
+                        val content = """
+                            FROM ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
+                            
+                            ENV modelix_workspace_id=${workspace.id}  
+                            ENV modelix_workspace_hash=${workspace.hash()}   
+                            ENV modelix_workspace_server=http://${HELM_PREFIX}workspace-manager:28104/      
+                            ENV INITIAL_JWT_TOKEN=$jwtToken  
+                            
+                            RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
+                            
+                            USER app
+                            
+                            RUN rm -rf /mps-projects/default-mps-project
+                            
+                            RUN mkdir /config/home/job \
+                                && cd /config/home/job \ 
+                                && wget -q "http://${HELM_PREFIX}workspace-manager:28104/static/workspace-job.tar" \
+                                && tar -xf workspace-job.tar \
+                                && mkdir /mps-projects/workspace-${workspace.id} \
+                                && cd /mps-projects/workspace-${workspace.id} \
+                                && /config/home/job/workspace-job/bin/workspace-job \
+                                && rm -rf /config/home/job
+                                
+                            RUN /update-recent-projects.sh \
+                                && echo "${WorkspaceProgressItems().build.runIndexer.logMessageStart}" \
+                                && ( /run-indexer.sh || echo "${WorkspaceProgressItems().build.runIndexer.logMessageFailed}" ) \
+                                && echo "${WorkspaceProgressItems().build.runIndexer.logMessageDone}"
+                            
+                            USER root
+                        """.trimIndent().toByteArray()
+                        tar.putArchiveEntry(TarArchiveEntry("Dockerfile").also { it.size = content.size.toLong() })
+                        tar.write(content)
+                        tar.closeArchiveEntry()
                     }
                 }
             }
 
             post("/remove-workspace") {
                 val workspaceId = call.receiveParameters()["workspaceId"]!!
-                call.checkPermission(workspaceId.workspaceIdAsResource(), KeycloakScope.DELETE)
+                call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).delete)
                 manager.removeWorkspace(workspaceId)
                 call.respondRedirect(".")
+            }
+
+            route("rest") {
+                get("access-control-data") {
+                    call.checkPermission(PermissionSchemaBase.permissionData.read)
+                    call.respondText(
+                        Json.encodeToString(manager.accessControlPersistence.read()),
+                        ContentType.Application.Json
+                    )
+                }
+                route("workspaces") {
+                    get {
+                        val workspaces = manager.getAllWorkspaces().filter {
+                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(it.id).list)
+                        }
+                        call.respondText(Json.encodeToString(workspaces), ContentType.Application.Json)
+                    }
+                    get("ids") {
+                        val ids = manager.getWorkspaceIds().filter {
+                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(it).list)
+                        }
+                        call.respondText(ids.joinToString("\n"))
+                    }
+                    route("by-id") {
+                        route("{workspaceId}") {
+                            get("workspace.json") {
+                                val workspaceId = call.parameters["workspaceId"]!!
+                                call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.read)
+                                val workspace = manager.getWorkspaceForId(workspaceId)?.workspace
+                                if (workspace == null) {
+                                    call.respond(HttpStatusCode.NotFound, "Workspace not found: $workspaceId")
+                                    return@get
+                                }
+                                call.respondText(Json.encodeToString(workspace), ContentType.Application.Json)
+                            }
+                        }
+                    }
+                    route("by-hash") {
+                        route("{workspaceHash}") {
+                            get("workspace.json") {
+                                val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
+                                val workspace = manager.getWorkspaceForHash(workspaceHash)?.workspace
+                                if (workspace == null) {
+                                    call.respond(HttpStatusCode.NotFound, "Workspace not found: $workspaceHash")
+                                    return@get
+                                }
+                                call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read)
+                                call.respondText(Json.encodeToString(workspace), ContentType.Application.Json)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        get("baseimage/{mpsVersion}/context.tar.gz") {
+            val mpsVersion = call.parameters["mpsVersion"]!!
+
+            val pluginFiles = listOf(
+                "diff-plugin.zip",
+                "generator-execution-plugin.zip",
+                "legacy-sync-plugin.zip",
+                "workspace-client-plugin.zip"
+            )
+
+            call.respondTarGz { tar ->
+                val content = """
+                    FROM ${System.getenv("MPS_BASEIMAGE_NAME")}:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
+                    
+                    COPY plugins /mps/plugins
+                    
+                    RUN /run-indexer.sh
+                """.trimIndent().toByteArray()
+                tar.putArchiveEntry(TarArchiveEntry("Dockerfile").also { it.size = content.size.toLong() })
+                tar.write(content)
+                tar.closeArchiveEntry()
+
+                for (pluginFileName in pluginFiles) {
+                    val resourceName = "org/modelix/workspace/static/$pluginFileName"
+                    val resourceAsStream = checkNotNull(WorkspaceManager::class.java.classLoader.getResourceAsStream(resourceName)) {
+                        "Resource file not found: $resourceName"
+                    }
+                    resourceAsStream.use { inputStream ->
+                        ZipInputStream(inputStream).use { zipInputStream ->
+                            for (zipEntry in generateSequence { zipInputStream.nextEntry }) {
+                                tar.putArchiveEntry(TarArchiveEntry("plugins/" + zipEntry.name).also { it.size = zipEntry.size })
+                                zipInputStream.copyTo(tar)
+                                tar.closeArchiveEntry()
+                            }
+                        }
+                    }
+                }
             }
         }
 
         get("/health") {
             call.respondText("healthy", ContentType.Text.Plain, HttpStatusCode.OK)
         }
-
     }
 
     install(CORS) {
@@ -893,9 +1107,6 @@ private fun findGitRepo(folder: File): File? {
     return null
 }
 
-fun Workspace.asResource() = id.workspaceIdAsResource()
-fun String.workspaceIdAsResource() = workspaceResourceType.createInstance(this)
-
 /**
  * respondHtml fails to respond anything if an exception is thrown in the body and an error handler is installed
  * that tries to respond an error page.
@@ -909,3 +1120,17 @@ suspend fun ApplicationCall.respondHtmlSafe(status: HttpStatusCode = HttpStatusC
 
 fun workspaceInstanceUrl(workspace: WorkspaceAndHash) = "workspace-${workspace.id}-${workspace.hash()}/own"
 fun workspaceInstanceUrl(workspace: WorkspaceAndHash, instance: SharedInstance) = "workspace-${workspace.id}-${workspace.hash()}/" + instance.name
+
+suspend fun ApplicationCall.respondTarGz(body: (TarArchiveOutputStream) -> Unit) {
+    respondOutputStream(ContentType.Application.GZip) {
+        val os = this
+        BufferedOutputStream(os).use { bos ->
+            GZIPOutputStream(bos).use { gzip ->
+                TarArchiveOutputStream(gzip).use { tar ->
+                    tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX)
+                    body(tar)
+                }
+            }
+        }
+    }
+}

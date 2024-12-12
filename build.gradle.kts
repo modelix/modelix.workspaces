@@ -19,6 +19,8 @@ fun computeVersion(): Any {
 }
 
 subprojects {
+    version = rootProject.version
+
     repositories {
         mavenLocal()
         maven { url = uri("https://artifacts.itemis.cloud/repository/maven-mps/") }

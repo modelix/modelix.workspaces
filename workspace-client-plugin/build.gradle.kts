@@ -1,7 +1,7 @@
 
 buildscript {
     dependencies {
-        classpath("org.modelix.mps:build-tools-lib:1.7.3")
+        classpath(libs.modelix.mps.build.tools)
     }
 }
 

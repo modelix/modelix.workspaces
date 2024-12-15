@@ -584,6 +584,10 @@ fun Application.workspaceManagerModule() {
                                             +" Also missing dependencies that should be ignored can be listed here."
                                             +" This section is usually used when the generation fails and editing the project is not possible."
                                         }
+                                        li {
+                                            b { +"modelSyncEnabled" }
+                                            +": Synchronization with the model-server for real-time collaboration"
+                                        }
                                     }
                                 }
                             }
@@ -948,6 +952,8 @@ fun Application.workspaceManagerModule() {
                             USER app
                             
                             RUN rm -rf /mps-projects/default-mps-project
+                            
+                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
                             
                             RUN mkdir /config/home/job \
                                 && cd /config/home/job \ 

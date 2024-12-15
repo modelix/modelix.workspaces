@@ -36,7 +36,8 @@ data class Workspace(val id: String,
                      val loadUsedModulesOnly: Boolean = false,
                      val sharedInstances: List<SharedInstance> = emptyList(),
                      @Deprecated("Replaced by query parameter")
-                     val waitForIndexer: Boolean = true
+                     val waitForIndexer: Boolean = true,
+                     val modelSyncEnabled: Boolean = false
 ) {
     fun uploadIds() = uploads.map { UploadId(it) }
     fun toYaml() = Yaml.default.encodeToString(this).replace("\nwaitForIndexer: false", "").replace("\nwaitForIndexer: true", "")

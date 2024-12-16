@@ -314,9 +314,11 @@ fun Application.workspaceManagerModule() {
                         }
                         br {}
                         div {
-                            a(href = "permissions/manage") {
-                                +"Manage Permissions"
-                            }
+                            a(href = "permissions/manage") { +"Permissions" }
+                            +" | "
+                            a(href = "build-queue/") { +"Build Jobs" }
+                            +" | "
+                            a(href = "../instances-manager/") { +"Instances" }
                         }
                     }
                 }
@@ -406,6 +408,10 @@ fun Application.workspaceManagerModule() {
                         }
                     }
                 }
+            }
+
+            route("build-queue") {
+                WorkspaceJobQueueUI(manager).install(this)
             }
 
             route("{workspaceId}") {
@@ -966,11 +972,11 @@ fun Application.workspaceManagerModule() {
                             
                             RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
                             
+                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
+                            
                             USER app
                             
                             RUN rm -rf /mps-projects/default-mps-project
-                            
-                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
                             
                             RUN mkdir /config/home/job \
                                 && cd /config/home/job \ 

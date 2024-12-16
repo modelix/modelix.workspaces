@@ -43,7 +43,7 @@ import kotlin.time.Duration.Companion.seconds
 
 class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
 
-    private val workspaceHash2job: MutableMap<WorkspaceHash, Job> = HashMap()
+    private val workspaceHash2job: MutableMap<WorkspaceHash, Job> = LinkedHashMap()
     private val coroutinesScope = CoroutineScope(Dispatchers.Default)
 
     init {
@@ -90,6 +90,8 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
             workspaceHash2job -= workspaceHash2job.filter { it.value.workspace.id == workspaceId }.keys
         }
     }
+
+    fun getJobs(): List<Job> = synchronized(workspaceHash2job) { workspaceHash2job.values.toList() }
 
     fun getOrCreateJob(workspace: WorkspaceAndHash): Job {
         synchronized(workspaceHash2job) {

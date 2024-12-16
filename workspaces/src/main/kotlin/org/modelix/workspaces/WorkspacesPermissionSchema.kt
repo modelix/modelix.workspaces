@@ -60,6 +60,12 @@ object WorkspacesPermissionSchema {
                     }
                 }
 
+                resource("build-job") {
+                    permission("restart") {
+                        permission("view")
+                    }
+                }
+
                 permission("owner") {
                     includedIn("workspaces", "admin")
                     permission("delete") {
@@ -68,12 +74,14 @@ object WorkspacesPermissionSchema {
                     permission("maintainer") {
                         includes("config", "write")
                         includes("shared-instance", "access")
+                        includes("build-job", "restart")
                         permission("contributor") {
                             includes("model-repository", "write")
                             permission("viewer") {
                                 includes("config", "read")
                                 includes("model-repository", "read")
                                 includes("instance", "run")
+                                includes("build-job", "view")
                                 permission("list")
                             }
                         }
@@ -145,6 +153,13 @@ object WorkspacesPermissionSchema {
                 val resource = this@Workspace.resource + "build-result"
                 val write = resource + "access"
                 val read = resource + "access"
+            }
+
+            val buildJob = BuildJob()
+            inner class BuildJob {
+                val resource = this@Workspace.resource + "build-job"
+                val restart = resource + "restart"
+                val view = resource + "view"
             }
         }
 

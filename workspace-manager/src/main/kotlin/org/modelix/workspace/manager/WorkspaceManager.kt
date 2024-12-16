@@ -48,7 +48,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
             ) + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read.fullId }
         )
     }
-    private val buildJobs = WorkspaceJobQueue(tokenGenerator = workspaceJobTokenGenerator)
+    val buildJobs = WorkspaceJobQueue(tokenGenerator = workspaceJobTokenGenerator)
 
     init {
         println("workspaces directory: $directory")
@@ -105,8 +105,16 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
     }
 
     fun buildWorkspaceDownloadFileAsync(workspaceHash: WorkspaceHash): WorkspaceJobQueue.Job {
-        val workspace = workspacePersistence.getWorkspaceForHash(workspaceHash) ?: throw RuntimeException("Workspace not found: $workspaceHash")
+        val workspace = requireNotNull(workspacePersistence.getWorkspaceForHash(workspaceHash)) { "Workspace not found: $workspaceHash" }
         return buildJobs.getOrCreateJob(workspace)
+    }
+
+    fun rebuild(workspaceHash: WorkspaceHash): WorkspaceJobQueue.Job {
+        val workspace = requireNotNull(workspacePersistence.getWorkspaceForHash(workspaceHash)) { "Workspace not found: $workspaceHash" }
+        return synchronized(buildJobs) {
+            buildJobs.removeByWorkspaceId(workspace.id)
+            buildJobs.getOrCreateJob(workspace)
+        }
     }
 
     fun getAllWorkspaces() = workspacePersistence.getAllWorkspaces()

@@ -314,9 +314,11 @@ fun Application.workspaceManagerModule() {
                         }
                         br {}
                         div {
-                            a(href = "permissions/manage") {
-                                +"Manage Permissions"
-                            }
+                            a(href = "permissions/manage") { +"Permissions" }
+                            +" | "
+                            a(href = "build-queue/") { +"Build Jobs" }
+                            +" | "
+                            a(href = "../instances-manager/") { +"Instances" }
                         }
                     }
                 }
@@ -406,6 +408,10 @@ fun Application.workspaceManagerModule() {
                         }
                     }
                 }
+            }
+
+            route("build-queue") {
+                WorkspaceJobQueueUI(manager).install(this)
             }
 
             route("{workspaceId}") {

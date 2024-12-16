@@ -966,11 +966,11 @@ fun Application.workspaceManagerModule() {
                             
                             RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
                             
+                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
+                            
                             USER app
                             
                             RUN rm -rf /mps-projects/default-mps-project
-                            
-                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
                             
                             RUN mkdir /config/home/job \
                                 && cd /config/home/job \ 

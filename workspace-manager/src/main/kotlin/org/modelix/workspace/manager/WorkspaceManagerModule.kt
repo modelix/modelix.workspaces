@@ -38,22 +38,18 @@ import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
-import io.ktor.server.request.receiveChannel
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respond
-import io.ktor.server.response.respondFile
 import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
-import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.util.pipeline.PipelineContext
-import io.ktor.utils.io.jvm.javaio.copyTo
 import kotlinx.html.DIV
 import kotlinx.html.FormEncType
 import kotlinx.html.FormMethod
@@ -63,6 +59,7 @@ import kotlinx.html.a
 import kotlinx.html.b
 import kotlinx.html.body
 import kotlinx.html.br
+import kotlinx.html.code
 import kotlinx.html.div
 import kotlinx.html.form
 import kotlinx.html.h1
@@ -111,6 +108,8 @@ import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
+import org.modelix.workspaces.Credentials
+import org.modelix.workspaces.GitRepository
 import org.modelix.workspaces.SharedInstance
 import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.Workspace
@@ -122,10 +121,10 @@ import org.modelix.workspaces.WorkspacesPermissionSchema
 import org.zeroturnaround.zip.ZipUtil
 import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlin.collections.set
 
 fun Application.workspaceManagerModule() {
 
@@ -421,7 +420,6 @@ fun Application.workspaceManagerModule() {
                         return@get
                     }
                     val workspace = workspaceAndHash.workspace
-                    val yaml = workspace.toYaml()
                     val canWrite = call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.write)
 
                     this.call.respondHtml(HttpStatusCode.OK) {
@@ -479,12 +477,13 @@ fun Application.workspaceManagerModule() {
                                 div {
                                     h1 { +"Edit Workspace"}
                                     form {
+                                        val configYaml = workspace.maskCredentials().toYaml()
                                         action = "./update"
                                         method = FormMethod.post
                                         textArea {
                                             name = "content"
                                             style = "width: 800px; height: 500px; border-radius: 4px; padding: 12px;"
-                                            text(yaml)
+                                            text(configYaml)
                                         }
                                         if (canWrite) {
                                             br()
@@ -548,10 +547,24 @@ fun Application.workspaceManagerModule() {
                                                 }
                                                 li {
                                                     b { +"credentials" }
-                                                    +": The credentials are encrypted before they are stored."
+                                                    +": Credentials for password-based or token-based authentication. The credentials are encrypted before they are stored."
                                                     ul {
-                                                        li { b { +"user" } }
-                                                        li { b { +"password" } }
+                                                        li {
+                                                            b { +"user" }
+                                                            +": The Git user. The value "
+                                                            code {
+                                                                +MASKED_CREDENTIAL_VALUE
+                                                            }
+                                                            +" indicates already saved user. Replace the value to set a new user."
+                                                        }
+                                                        li {
+                                                            b { +"password" }
+                                                            +": The Git password or token. The value "
+                                                            code {
+                                                                +MASKED_CREDENTIAL_VALUE
+                                                            }
+                                                            +" indicates an already saved password. Replace the value to set a new password."
+                                                        }
                                                     }
                                                 }
                                             }
@@ -703,22 +716,26 @@ fun Application.workspaceManagerModule() {
                 }
 
                 post("update") {
-                    val yamlText = call.receiveParameters()["content"]
                     val id = workspaceId()
+                    val workspaceAndHash = manager.getWorkspaceForId(id)
+                    if (workspaceAndHash == null) {
+                        call.respond(HttpStatusCode.NotFound, "Workspace $id not found")
+                        return@post
+                    }
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(id).config.write)
+                    val yamlText = call.receiveParameters()["content"]
                     if (yamlText == null) {
                         call.respond(HttpStatusCode.BadRequest, "Content missing")
                         return@post
                     }
-                    val workspace: Workspace
-                    try {
-                        workspace = Yaml.default.decodeFromString<Workspace>(yamlText)
+                    val uncheckedWorkspaceConfig = try {
+                        Yaml.default.decodeFromString<Workspace>(yamlText)
                     } catch (e: Exception) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Parse error")
                         return@post
                     }
-                    // set ID just in case the user copy-pastes a workspace and forgets to change the ID
-                    manager.update(workspace.copy(id = id))
+                    val newWorkspaceConfig = sanitizeReceivedWorkspaceConfig(uncheckedWorkspaceConfig, workspaceAndHash.workspace)
+                    manager.update(newWorkspaceConfig)
                     call.respondRedirect("./edit")
                 }
 
@@ -998,6 +1015,8 @@ fun Application.workspaceManagerModule() {
                         val workspaces = manager.getAllWorkspaces().filter {
                             call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(it.id).list)
                         }
+                        // TODO MODELIX-1057 Credentials can be exposed here.
+                        // The "rest" endpoints are to be removed after merging workspace- and instance-manager
                         call.respondText(Json.encodeToString(workspaces), ContentType.Application.Json)
                     }
                     get("ids") {
@@ -1016,6 +1035,8 @@ fun Application.workspaceManagerModule() {
                                     call.respond(HttpStatusCode.NotFound, "Workspace not found: $workspaceId")
                                     return@get
                                 }
+                                // TODO MODELIX-1057 Credentials can be exposed here.
+                                // The "rest" endpoints are to be removed after merging workspace- and instance-manager
                                 call.respondText(Json.encodeToString(workspace), ContentType.Application.Json)
                             }
                         }
@@ -1030,6 +1051,8 @@ fun Application.workspaceManagerModule() {
                                     return@get
                                 }
                                 call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read)
+                                // TODO MODELIX-1057 Credentials can be exposed here.
+                                // The "rest" endpoints are to be removed after merging workspace- and instance-manager
                                 call.respondText(Json.encodeToString(workspace), ContentType.Application.Json)
                             }
                         }
@@ -1140,3 +1163,76 @@ suspend fun ApplicationCall.respondTarGz(body: (TarArchiveOutputStream) -> Unit)
         }
     }
 }
+
+fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: Workspace, existingWorkspaceConfig: Workspace): Workspace =
+    mergeMaskedCredentialsWithPreviousCredentials(receivedWorkspaceConfig, existingWorkspaceConfig)
+        // set ID just in case the user copy-pastes a workspace and forgets to change the ID
+        .copy(id = existingWorkspaceConfig.id)
+
+const val MASKED_CREDENTIAL_VALUE = "••••••••"
+
+fun Workspace.maskCredentials(): Workspace {
+    val gitRepositories = this.gitRepositories.map { repository ->
+        repository.copy(
+            credentials = repository.credentials?.copy(
+                user = MASKED_CREDENTIAL_VALUE,
+                password = MASKED_CREDENTIAL_VALUE
+            )
+        )
+    }
+    return this.copy(gitRepositories = gitRepositories)
+}
+
+fun mergeMaskedCredentialsWithPreviousCredentials(
+    receivedWorkspaceConfig: Workspace, existingWorkspaceConfig: Workspace
+): Workspace {
+    val gitRepositories = receivedWorkspaceConfig.gitRepositories.mapIndexed { i, receivedRepository ->
+        // Credentials will be reused, when:
+        // * When the URL is the same,
+        //   because it should not be possible to change the URL of a workspace
+        //   and by that gain access to another repository with a user's credentials.
+        // * When the index is the same,
+        //   because a user might specify the same repositories URL but with different credentials.
+        //   (This is very unlikely, but possible.)
+
+        val repositoryAtSameIndex = existingWorkspaceConfig.gitRepositories.getOrNull(i)
+        val matchingRepository = if (repositoryAtSameIndex != null && repositoryAtSameIndex.url == receivedRepository.url) {
+            repositoryAtSameIndex
+        } else {
+            null
+        }
+        val mergedCredentials = mergeMaskedCredentialsWithPreviousCredentials(receivedRepository, matchingRepository)
+        receivedRepository.copy(credentials = mergedCredentials)
+    }
+    return receivedWorkspaceConfig.copy(gitRepositories = gitRepositories)
+}
+
+private fun mergeMaskedCredentialsWithPreviousCredentials(
+    receivedRepository: GitRepository,
+    matchingRepository: GitRepository?
+): Credentials? {
+    val receivedCredentials = receivedRepository.credentials
+    if (receivedCredentials == null) {
+        return null
+    }
+    val existingCredentials = matchingRepository?.credentials
+    if (existingCredentials == null) {
+        if (receivedCredentials.user != MASKED_CREDENTIAL_VALUE && receivedCredentials.password != MASKED_CREDENTIAL_VALUE) {
+            return receivedCredentials
+        } else {
+            return null
+        }
+    }
+    val mergedUser = if (receivedCredentials.user == MASKED_CREDENTIAL_VALUE) {
+        existingCredentials.user
+    } else {
+        receivedCredentials.user
+    }
+    val mergedPassword = if (receivedCredentials.password == MASKED_CREDENTIAL_VALUE) {
+        existingCredentials.password
+    } else {
+        receivedCredentials.password
+    }
+    return receivedCredentials.copy(user = mergedUser, password = mergedPassword)
+}
+

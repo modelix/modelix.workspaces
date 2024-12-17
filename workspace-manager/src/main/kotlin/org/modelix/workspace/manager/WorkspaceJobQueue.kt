@@ -193,6 +193,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
             val memoryLimit = workspace.memoryLimit
             val jwtToken = tokenGenerator(workspace.workspace)
             val dockerConfigSecretName = System.getenv("DOCKER_CONFIG_SECRET_NAME")
+            val dockerConfigInternalRegistrySecretName = System.getenv("DOCKER_CONFIG_INTERN_REGISTRY_SECRET_NAME")
 
             return """
                 apiVersion: batch/v1
@@ -208,7 +209,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                       tolerations:
                       - key: "workspace-client"
                         operator: "Exists"
-                        effect: "NoExecute"                    
+                        effect: "NoExecute"
                       containers:
                       - name: wsjob
                         image: $IMAGE_NAME:$IMAGE_VERSION
@@ -240,10 +241,10 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                           limits:
                             memory: $memoryLimit
                             cpu: "1.0" 
-                        ${if (dockerConfigSecretName != null) """
                         volumeMounts:
+                        ${if (dockerConfigSecretName != null) """
                         - name: "docker-config"
-                          mountPath: /kaniko/.docker/config.json
+                          mountPath: /secrets/config-external-registry.json
                           subPath: config.json
                           readOnly: true
                         - name: "docker-proxy-ca"
@@ -251,9 +252,19 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                           subPath: docker-proxy-ca.crt
                           readOnly: true
                         """ else ""}
+                        - name: "docker-config-internal-registry"
+                          mountPath: /secrets/config-internal-registry.json
+                          subPath: config.json
+                          readOnly: true
                       restartPolicy: Never
-                      ${if (dockerConfigSecretName != null) """
                       volumes:
+                      - name: "docker-config-internal-registry"
+                        secret:
+                          secretName: "$dockerConfigInternalRegistrySecretName"
+                          items:
+                            - key: .dockerconfigjsonUsingServiceName
+                              path: config.json
+                      ${if (dockerConfigSecretName != null) """
                       - name: "docker-config"
                         secret:
                           secretName: "$dockerConfigSecretName"

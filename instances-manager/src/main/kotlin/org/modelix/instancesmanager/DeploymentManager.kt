@@ -392,12 +392,6 @@ class DeploymentManager {
         return deployment
     }
 
-    fun getDockerRegistryPort(): Int {
-        val api = CoreV1Api()
-        var service: V1Service? = api.readNamespacedService(System.getenv("DOCKER_REGISTRY_SERVICE_NAME"), KUBERNETES_NAMESPACE).execute()
-        return service?.spec?.ports?.firstNotNullOfOrNull { it.nodePort } ?: throw IllegalStateException("Registry port unknown")
-    }
-
     fun getPod(deploymentName: InstanceName): V1Pod? {
         try {
             val coreApi = CoreV1Api()
@@ -576,7 +570,7 @@ class DeploymentManager {
 
             // The image registry is made available to the container runtime via a NodePort
             // localhost in this case is the kubernetes node, not the instances-manager
-            container.image = "localhost:${getDockerRegistryPort()}/modelix-workspaces/ws${workspace.id}:${workspace.hash().toValidImageTag()}"
+            container.image = "${INTERNAL_DOCKER_REGISTRY_AUTHORITY}/modelix-workspaces/ws${workspace.id}:${workspace.hash().toValidImageTag()}"
 
             val resources = container.resources ?: return
             val memoryLimit = Quantity.fromString(workspace.memoryLimit)
@@ -686,6 +680,7 @@ class DeploymentManager {
         val INSTANCE_PREFIX = System.getenv("WORKSPACE_CLIENT_PREFIX") ?: "wsclt-"
         val WORKSPACE_CLIENT_DEPLOYMENT_NAME = System.getenv("WORKSPACE_CLIENT_DEPLOYMENT_NAME") ?: "workspace-client"
         val WORKSPACE_PATTERN = Pattern.compile("workspace-([a-f0-9]+)-([a-zA-Z0-9\\-_\\*]+)")
+        val INTERNAL_DOCKER_REGISTRY_AUTHORITY = requireNotNull(System.getenv("INTERNAL_DOCKER_REGISTRY_AUTHORITY"))
         val INSTANCE = DeploymentManager()
     }
 }

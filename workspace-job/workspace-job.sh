@@ -4,6 +4,12 @@ set -e
 
 echo "### DONE build-startKubernetesJob ###"
 
+if [ -f /secrets/config-external-registry.json ]; then
+  jq -s '.[0] * .[1]' /secrets/config-external-registry.json /secrets/config-internal-registry.json > /kaniko/.docker/config.json
+else
+  cp /secrets/config-internal-registry.json /kaniko/.docker/config.json
+fi
+
 (
   # apply custom CA certificate
   cd /kaniko/ssl/certs

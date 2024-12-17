@@ -279,7 +279,9 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
             var jobName = JOB_PREFIX + cleanName
             val charsToRemove = jobName.length - (63 - 16)
             if (charsToRemove > 0) jobName = jobName.substring(0, jobName.length - charsToRemove)
-            return jobName
+            // Delete forbidden trailing hyphens ("-") that could be part of `HashUtil.sha256`.
+            // HashUtil.sha256 uses Base64 for URL which might contain "-".
+            return jobName.trimEnd('-')
         }
     }
 }

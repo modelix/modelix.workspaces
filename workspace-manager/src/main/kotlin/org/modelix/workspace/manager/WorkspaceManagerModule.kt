@@ -35,6 +35,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.application.install
+import io.ktor.server.auth.principal
 import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
@@ -100,8 +101,10 @@ import kotlinx.serialization.json.Json
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.io.FileUtils
+import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.ModelixAuthorization
 import org.modelix.authorization.ModelixJWTUtil
+import org.modelix.authorization.NoPermissionException
 import org.modelix.authorization.checkPermission
 import org.modelix.authorization.getUserName
 import org.modelix.authorization.hasPermission
@@ -901,30 +904,6 @@ fun Application.workspaceManagerModule() {
                     call.respond(decrypted)
                 }
 
-                get("git/{repoIndex}/repo.zip") {
-                    val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
-                    val workspace = manager.getWorkspaceForHash(workspaceHash)?.workspace
-                    if (workspace == null) {
-                        call.respond(HttpStatusCode.NotFound, "workspace $workspaceHash not found")
-                        return@get
-                    }
-                    val repoIndex = call.parameters["repoIndex"]!!.toInt()
-                    val gitRepo = workspace.gitRepositories.getOrNull(repoIndex)
-                    if (gitRepo == null) {
-                        call.respond(HttpStatusCode.NotFound, "workspace $workspaceHash doesn't contain a git repository with index $repoIndex")
-                        return@get
-                    }
-
-                    val gitRepoWitDecryptedCredentials = credentialsEncryption.copyWithDecryptedCredentials(gitRepo)
-                    val gitRepoManager = GitRepositoryManager(gitRepoWitDecryptedCredentials, manager.getWorkspaceDirectory(workspace))
-                    gitRepoManager.updateRepo()
-                    call.respondOutputStream(ContentType.Application.Zip) {
-                        ZipOutputStream(this).use { zip ->
-                            gitRepoManager.zip(gitRepo.paths, zip, true)
-                        }
-                    }
-                }
-
                 get("buildlog") {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val job = manager.buildWorkspaceDownloadFileAsync(workspaceHash)
@@ -979,10 +958,21 @@ fun Application.workspaceManagerModule() {
                 get("context.tar.gz") {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val workspace = manager.getWorkspaceForHash(workspaceHash)!!
+
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.readCredentials)
+
+                    // more extensive check to ensure only the build job has access
+                    if (!run {
+                        val token = call.principal<AccessTokenPrincipal>()?.jwt ?: return@run false
+                        if (!manager.jwtUtil.isAccessToken(token)) return@run false
+                        if (token.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
+                        true
+                    }) throw NoPermissionException("Only permitted to the workspace-job")
+
                     val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
                     val jwtToken = manager.workspaceJobTokenGenerator(workspace.workspace)
                     call.respondTarGz { tar ->
-                        val content = """
+                        tar.putFile("Dockerfile", """
                             FROM ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
                             
                             ENV modelix_workspace_id=${workspace.id}  
@@ -994,6 +984,12 @@ fun Application.workspaceManagerModule() {
                             
                             ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
                             
+                            COPY clone.sh /clone.sh
+                            RUN chmod +x /clone.sh && chown app:app /clone.sh
+                            USER app
+                            RUN /clone.sh
+                            USER root
+                            RUN rm /clone.sh
                             USER app
                             
                             RUN rm -rf /mps-projects/default-mps-project
@@ -1002,7 +998,6 @@ fun Application.workspaceManagerModule() {
                                 && cd /config/home/job \ 
                                 && wget -q "http://${HELM_PREFIX}workspace-manager:28104/static/workspace-job.tar" \
                                 && tar -xf workspace-job.tar \
-                                && mkdir /mps-projects/workspace-${workspace.id} \
                                 && cd /mps-projects/workspace-${workspace.id} \
                                 && /config/home/job/workspace-job/bin/workspace-job \
                                 && rm -rf /config/home/job
@@ -1013,10 +1008,29 @@ fun Application.workspaceManagerModule() {
                                 && echo "${WorkspaceProgressItems().build.runIndexer.logMessageDone}"
                             
                             USER root
-                        """.trimIndent().toByteArray()
-                        tar.putArchiveEntry(TarArchiveEntry("Dockerfile").also { it.size = content.size.toLong() })
-                        tar.write(content)
-                        tar.closeArchiveEntry()
+                        """.trimIndent().toByteArray())
+
+                        // Separate file for git command because they may contain the credentials
+                        // and the commands shouldn't appear in the log
+                        tar.putFile("clone.sh", """
+                            #!/bin/sh
+                            
+                            echo "### START build-gitClone ###"
+                            
+                            ${
+                                workspace.gitRepositories.flatMapIndexed { index, git ->
+                                    val dir = "/mps-projects/workspace-${workspace.id}/git/$index/"
+                                    listOf(
+                                        "mkdir -p $dir",
+                                        "cd $dir",
+                                        "git clone ${git.urlWithCredentials(credentialsEncryption)}",
+                                        "git checkout " + (git.commitHash ?: ("origin/" + git.branch)),
+                                    )
+                                }.joinToString("\n")
+                            }
+                            
+                            echo "### DONE build-gitClone ###"
+                        """.lines().joinToString("\n") { it.trim() }.toByteArray())
                     }
                 }
             }
@@ -1270,4 +1284,10 @@ private fun FlowOrInteractiveOrPhrasingContent.buildPermissionManagementLink(res
             HTMLTag("path", consumer, mapOf("d" to "M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2m-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2m3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1z"), null, false, false).visit {}
         }
     }
+}
+
+private fun TarArchiveOutputStream.putFile(name: String, content: ByteArray) {
+    putArchiveEntry(TarArchiveEntry(name).also { it.size = content.size.toLong() })
+    write(content)
+    closeArchiveEntry()
 }

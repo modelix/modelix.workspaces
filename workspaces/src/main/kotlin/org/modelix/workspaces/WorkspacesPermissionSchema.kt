@@ -25,6 +25,9 @@ object WorkspacesPermissionSchema {
                 parameter("id")
 
                 resource("config") {
+                    permission("read-credentials") {
+                        description("For internal use only. Users shouldn't have this permission.")
+                    }
                     permission("delete") {
                         permission("write") {
                             permission("read") {
@@ -127,6 +130,7 @@ object WorkspacesPermissionSchema {
                 val delete = resource + "delete"
                 val write = resource + "write"
                 val read = resource + "read"
+                val readCredentials = resource + "read-credentials"
             }
 
             val modelRepository = ModelRepository()

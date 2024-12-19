@@ -1,5 +1,7 @@
 package org.modelix.workspace.manager
 
+import io.ktor.http.takeFrom
+import io.ktor.server.util.url
 import org.jasypt.util.text.AES256TextEncryptor
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
@@ -56,3 +58,12 @@ fun CredentialsEncryption.copyWithEncryptedCredentials(gitRepository: GitReposit
 
 fun CredentialsEncryption.copyWithDecryptedCredentials(gitRepository: GitRepository): GitRepository =
     gitRepository.copy(credentials = gitRepository.credentials?.run(::decrypt))
+
+fun GitRepository.urlWithCredentials(ce: CredentialsEncryption): String {
+    val decryptedCredentials = ce.decrypt(credentials ?: return url)
+    return url {
+        takeFrom(url)
+        user = decryptedCredentials.password
+        password = decryptedCredentials.password
+    }
+}

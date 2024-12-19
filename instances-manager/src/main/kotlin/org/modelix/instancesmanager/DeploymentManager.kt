@@ -80,7 +80,6 @@ class DeploymentManager {
     private val disabledInstances = HashSet<InstanceName>()
     private val dirty = AtomicBoolean(true)
     private val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
-    val publicKey: JWK = jwtUtil.getPublicJWKS().keys.single()
     private val httpClientToManager = HttpClient(CIO) {
         expectSuccess = true
         install(Auth) {
@@ -150,7 +149,7 @@ class DeploymentManager {
                     takeFrom(workspaceServerUrl)
                     appendPathSegments("rest", "access-control-data")
                 }
-            }.bodyAsText().let { Json.decodeFromString(it) }
+            }.bodyAsText().let { Json{ ignoreUnknownKeys = true }.decodeFromString(it) }
         }
     }
 

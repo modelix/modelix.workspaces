@@ -53,17 +53,6 @@ object Main {
         val handlerList = HandlerList()
         server.handler = handlerList
 
-        handlerList.addHandler(object : AbstractHandler() {
-            override fun handle(target: String, baseRequest: Request, request: HttpServletRequest, response: HttpServletResponse) {
-                if (request.requestURI == "/.well-known/jwks.json") {
-                    baseRequest.isHandled = true
-                    response.contentType = "application/json"
-                    response.status = HttpServletResponse.SC_OK
-                    response.writer.append(DeploymentManager.INSTANCE.publicKey.toString())
-                }
-            }
-        })
-
         val deploymentManagingHandler = DeploymentManagingHandler(DeploymentManager.INSTANCE)
         handlerList.addHandler(deploymentManagingHandler)
         val proxyServlet: ProxyServletWithWebsocketSupport = object : ProxyServletWithWebsocketSupport() {

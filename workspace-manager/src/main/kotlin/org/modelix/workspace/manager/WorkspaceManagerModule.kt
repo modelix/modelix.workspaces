@@ -27,6 +27,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.http.content.streamProvider
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.parameters
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -34,6 +35,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.application.install
+import io.ktor.server.auth.principal
 import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
@@ -51,9 +53,11 @@ import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.util.pipeline.PipelineContext
 import kotlinx.html.DIV
+import kotlinx.html.FlowOrInteractiveOrPhrasingContent
 import kotlinx.html.FormEncType
 import kotlinx.html.FormMethod
 import kotlinx.html.HTML
+import kotlinx.html.HTMLTag
 import kotlinx.html.InputType
 import kotlinx.html.a
 import kotlinx.html.b
@@ -80,6 +84,7 @@ import kotlinx.html.span
 import kotlinx.html.stream.createHTML
 import kotlinx.html.style
 import kotlinx.html.submitInput
+import kotlinx.html.svg
 import kotlinx.html.table
 import kotlinx.html.td
 import kotlinx.html.textArea
@@ -89,18 +94,22 @@ import kotlinx.html.title
 import kotlinx.html.tr
 import kotlinx.html.ul
 import kotlinx.html.unsafe
+import kotlinx.html.visit
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.io.FileUtils
+import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.ModelixAuthorization
 import org.modelix.authorization.ModelixJWTUtil
+import org.modelix.authorization.NoPermissionException
 import org.modelix.authorization.checkPermission
 import org.modelix.authorization.getUserName
 import org.modelix.authorization.hasPermission
 import org.modelix.authorization.jwt
+import org.modelix.authorization.permissions.PermissionParts
 import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.authorization.requiresLogin
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
@@ -124,7 +133,6 @@ import java.io.File
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
-import kotlin.collections.set
 
 fun Application.workspaceManagerModule() {
 
@@ -138,6 +146,7 @@ fun Application.workspaceManagerModule() {
         permissionSchema = WorkspacesPermissionSchema.SCHEMA
         accessControlPersistence = manager.accessControlPersistence
         installStatusPages = true
+        permissionManagementEnabled = true
     }
     install(ContentNegotiation) {
         json()
@@ -190,7 +199,7 @@ fun Application.workspaceManagerModule() {
                                     tr {
                                         th { +"Workspace"}
                                         th {
-                                            colSpan="5"
+                                            colSpan = "6"
                                             +"Actions"
                                         }
                                     }
@@ -280,6 +289,9 @@ fun Application.workspaceManagerModule() {
                                                 }
                                             }
                                             td {
+                                                buildPermissionManagementLink(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).resource)
+                                            }
+                                            td {
                                                 if (canDelete) {
                                                     postForm("./remove-workspace") {
                                                         style = "display: inline-block"
@@ -298,7 +310,7 @@ fun Application.workspaceManagerModule() {
                                 if (call.hasPermission(WorkspacesPermissionSchema.workspaces.add)) {
                                     tr {
                                         td {
-                                            colSpan = "6"
+                                            colSpan = "7"
                                             form {
                                                 action = "new"
                                                 method = FormMethod.post
@@ -314,7 +326,7 @@ fun Application.workspaceManagerModule() {
                         }
                         br {}
                         div {
-                            a(href = "permissions/manage") { +"Permissions" }
+                            a(href = "permissions/resources/workspaces/") { +"Permissions" }
                             +" | "
                             a(href = "build-queue/") { +"Build Jobs" }
                             +" | "
@@ -459,6 +471,12 @@ fun Application.workspaceManagerModule() {
                                 }
                                 div("menuItem") {
                                     a("../../${workspaceInstanceUrl(workspaceAndHash)}/generator/") { +"Generator" }
+                                }
+                                div("menuItem") {
+                                    val resource = WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).resource
+                                    a("../permissions/resources/${resource.fullId.encodeURLPathPart()}/") {
+                                        +"Permissions"
+                                    }
                                 }
                                 workspace.gitRepositories.forEachIndexed { index, gitRepository ->
                                     div("menuItem") {
@@ -830,9 +848,10 @@ fun Application.workspaceManagerModule() {
                     // ensure the user has the necessary permission on the model-server
                     val userId = call.getUserName()
                     if (userId != null) {
+                        val repositoryResource = ModelServerPermissionSchema.repository("workspace_${workspaceId()}")
                         val permissionId = when {
-                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).modelRepository.write) -> ModelServerPermissionSchema.repository("workspace_${workspaceId()}").write
-                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).modelRepository.read) -> ModelServerPermissionSchema.repository("workspace_${workspaceId()}").read
+                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).modelRepository.write) -> repositoryResource.write
+                            call.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).modelRepository.read) -> repositoryResource.read
                             else -> null
                         }
                         if (permissionId != null) {
@@ -844,9 +863,13 @@ fun Application.workspaceManagerModule() {
                                 }
                             ) {
                                 expectSuccess = true
-                                bearerAuth(manager.jwtUtil.createAccessToken("workspace-manager@modelix.org", listOf(
-                                    permissionId.fullId // for granting a permission to someone else it's sufficient to have that permission
-                                )))
+                                bearerAuth(
+                                    manager.jwtUtil.createAccessToken(
+                                        "workspace-manager@modelix.org", listOf(
+                                            PermissionSchemaBase.cluster.admin.fullId
+                                        )
+                                    )
+                                )
                             }
                         }
                     }
@@ -879,30 +902,6 @@ fun Application.workspaceManagerModule() {
                         workspace
                     }
                     call.respond(decrypted)
-                }
-
-                get("git/{repoIndex}/repo.zip") {
-                    val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
-                    val workspace = manager.getWorkspaceForHash(workspaceHash)?.workspace
-                    if (workspace == null) {
-                        call.respond(HttpStatusCode.NotFound, "workspace $workspaceHash not found")
-                        return@get
-                    }
-                    val repoIndex = call.parameters["repoIndex"]!!.toInt()
-                    val gitRepo = workspace.gitRepositories.getOrNull(repoIndex)
-                    if (gitRepo == null) {
-                        call.respond(HttpStatusCode.NotFound, "workspace $workspaceHash doesn't contain a git repository with index $repoIndex")
-                        return@get
-                    }
-
-                    val gitRepoWitDecryptedCredentials = credentialsEncryption.copyWithDecryptedCredentials(gitRepo)
-                    val gitRepoManager = GitRepositoryManager(gitRepoWitDecryptedCredentials, manager.getWorkspaceDirectory(workspace))
-                    gitRepoManager.updateRepo()
-                    call.respondOutputStream(ContentType.Application.Zip) {
-                        ZipOutputStream(this).use { zip ->
-                            gitRepoManager.zip(gitRepo.paths, zip, true)
-                        }
-                    }
                 }
 
                 get("buildlog") {
@@ -959,10 +958,21 @@ fun Application.workspaceManagerModule() {
                 get("context.tar.gz") {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val workspace = manager.getWorkspaceForHash(workspaceHash)!!
+
+                    call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.readCredentials)
+
+                    // more extensive check to ensure only the build job has access
+                    if (!run {
+                        val token = call.principal<AccessTokenPrincipal>()?.jwt ?: return@run false
+                        if (!manager.jwtUtil.isAccessToken(token)) return@run false
+                        if (token.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
+                        true
+                    }) throw NoPermissionException("Only permitted to the workspace-job")
+
                     val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
                     val jwtToken = manager.workspaceJobTokenGenerator(workspace.workspace)
                     call.respondTarGz { tar ->
-                        val content = """
+                        tar.putFile("Dockerfile", """
                             FROM ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
                             
                             ENV modelix_workspace_id=${workspace.id}  
@@ -974,6 +984,12 @@ fun Application.workspaceManagerModule() {
                             
                             ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
                             
+                            COPY clone.sh /clone.sh
+                            RUN chmod +x /clone.sh && chown app:app /clone.sh
+                            USER app
+                            RUN /clone.sh
+                            USER root
+                            RUN rm /clone.sh
                             USER app
                             
                             RUN rm -rf /mps-projects/default-mps-project
@@ -982,7 +998,6 @@ fun Application.workspaceManagerModule() {
                                 && cd /config/home/job \ 
                                 && wget -q "http://${HELM_PREFIX}workspace-manager:28104/static/workspace-job.tar" \
                                 && tar -xf workspace-job.tar \
-                                && mkdir /mps-projects/workspace-${workspace.id} \
                                 && cd /mps-projects/workspace-${workspace.id} \
                                 && /config/home/job/workspace-job/bin/workspace-job \
                                 && rm -rf /config/home/job
@@ -993,10 +1008,29 @@ fun Application.workspaceManagerModule() {
                                 && echo "${WorkspaceProgressItems().build.runIndexer.logMessageDone}"
                             
                             USER root
-                        """.trimIndent().toByteArray()
-                        tar.putArchiveEntry(TarArchiveEntry("Dockerfile").also { it.size = content.size.toLong() })
-                        tar.write(content)
-                        tar.closeArchiveEntry()
+                        """.trimIndent().toByteArray())
+
+                        // Separate file for git command because they may contain the credentials
+                        // and the commands shouldn't appear in the log
+                        tar.putFile("clone.sh", """
+                            #!/bin/sh
+                            
+                            echo "### START build-gitClone ###"
+                            
+                            ${
+                                workspace.gitRepositories.flatMapIndexed { index, git ->
+                                    val dir = "/mps-projects/workspace-${workspace.id}/git/$index/"
+                                    listOf(
+                                        "mkdir -p $dir",
+                                        "cd $dir",
+                                        "git clone ${git.urlWithCredentials(credentialsEncryption)}",
+                                        "git checkout " + (git.commitHash ?: ("origin/" + git.branch)),
+                                    )
+                                }.joinToString("\n")
+                            }
+                            
+                            echo "### DONE build-gitClone ###"
+                        """.lines().joinToString("\n") { it.trim() }.toByteArray())
                     }
                 }
             }
@@ -1242,3 +1276,18 @@ private fun mergeMaskedCredentialsWithPreviousCredentials(
     return receivedCredentials.copy(user = mergedUser, password = mergedPassword)
 }
 
+private fun FlowOrInteractiveOrPhrasingContent.buildPermissionManagementLink(resource: PermissionParts) {
+    a("permissions/resources/${resource.fullId.encodeURLPathPart()}/") {
+        svg {
+            style = "color: rgba(0, 0, 0, 0.87); fill: rgba(0, 0, 0, 0.87); width: 20px; height: 20px;"
+            attributes["viewBox"] = "0 0 24 24"
+            HTMLTag("path", consumer, mapOf("d" to "M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2m-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2m3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1z"), null, false, false).visit {}
+        }
+    }
+}
+
+private fun TarArchiveOutputStream.putFile(name: String, content: ByteArray) {
+    putArchiveEntry(TarArchiveEntry(name).also { it.size = content.size.toLong() })
+    write(content)
+    closeArchiveEntry()
+}

@@ -44,6 +44,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
             "workspace-job@modelix.org",
             listOf(
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read.fullId,
+                WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.readCredentials.fullId,
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).buildResult.write.fullId,
             ) + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read.fullId }
         )

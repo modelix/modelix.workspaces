@@ -72,28 +72,13 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
         }
     }
 
-    private suspend fun cloneGitRepositories(): List<File> {
+    private fun cloneGitRepositories(): List<File> {
         return workspace.gitRepositories.mapIndexed { repoIndex, repo ->
-            LOG.info { "Cloning ${repo.url}" }
             val repoFolder = workspaceDir.resolve("git/$repoIndex")
-            val data = httpClient.get {
-                url {
-                    takeFrom(serverUrl)
-                    appendPathSegments(workspace.hash().hash, "git", repoIndex.toString(), "repo.zip")
-                }
-                timeout {
-                    requestTimeoutMillis = 5.minutes.inWholeMilliseconds
-                }
-            }.bodyAsChannel()
-            ZipUtil.unpack(data.toInputStream(), repoFolder)
+            // cloning is now done inside shell scripts
             val childFolders = repoFolder.listFiles()?.toList() ?: emptyList()
             if (repoFolder.listFiles()?.size == 1) childFolders.first() else repoFolder
         }
-//        return workspace.gitRepositories.flatMap { repo ->
-//            val repoManager = GitRepositoryManager(repo, workspaceDir)
-//            repoManager.updateRepo()
-//            repoManager.getRootFolders(repo.paths)
-//        }
     }
 
     private fun copyMavenDependencies(): List<File> {

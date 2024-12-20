@@ -14,15 +14,31 @@
 
 package org.modelix.workspace.job
 
-import io.ktor.client.*
-import io.ktor.client.plugins.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
-import io.ktor.util.cio.*
-import io.ktor.utils.io.*
-import io.ktor.utils.io.jvm.javaio.*
-import org.modelix.buildtools.*
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.get
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.appendPathSegments
+import io.ktor.http.takeFrom
+import io.ktor.util.cio.writeChannel
+import io.ktor.utils.io.copyTo
+import io.ktor.utils.io.jvm.javaio.toInputStream
+import org.modelix.buildtools.BuildScriptGenerator
+import org.modelix.buildtools.DependencyGraph
+import org.modelix.buildtools.FoundModule
+import org.modelix.buildtools.FoundModules
+import org.modelix.buildtools.LibraryModuleOwner
+import org.modelix.buildtools.ModuleId
+import org.modelix.buildtools.ModuleOrigin
+import org.modelix.buildtools.ModuleResolver
+import org.modelix.buildtools.ModulesMiner
+import org.modelix.buildtools.PluginModuleOwner
+import org.modelix.buildtools.PublicationDependencyGraph
+import org.modelix.buildtools.SourceModuleOwner
+import org.modelix.buildtools.newChild
+import org.modelix.buildtools.xmlToString
 import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
@@ -82,7 +98,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
     }
 
     private fun copyMavenDependencies(): List<File> {
-        return workspace.mavenDependencies.map {  mavenDep ->
+        return workspace.mavenDependencies.map { mavenDep ->
             LOG.info { "Resolving $mavenDep" }
             MavenDownloader(workspace.workspace, workspaceDir).downloadAndCopyFromMaven(mavenDep) { println(it) }
         }
@@ -99,7 +115,6 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
             mavenFolders + gitFolders + uploadFolders
             ).map { ModuleOrigin(it.toPath(), workspaceDir.toPath().relativize(it.toPath())) } + mpsHome
 
-
         var modulesXml: String? = null
         val modulesMiner = ModulesMiner()
         runSafely(WorkspaceBuildStatus.FailedBuild) {
@@ -111,7 +126,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                 buildScriptGenerator = BuildScriptGenerator(
                     modulesMiner,
                     ignoredModules = workspace.ignoredModules.map { ModuleId(it) }.toSet(),
-                    additionalGenerationDependencies = workspace.workspace.additionalGenerationDependenciesAsMap()
+                    additionalGenerationDependencies = workspace.workspace.additionalGenerationDependenciesAsMap(),
                 )
                 runSafely {
                     modulesXml = xmlToString(buildModulesXml(buildScriptGenerator.modulesMiner.getModules()))
@@ -130,7 +145,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                 graph.load(modulesMiner.getModules().getModules().values)
                 val sourceModules: Set<ModuleId> = modulesMiner.getModules().getModules()
                     .filter { it.value.owner is SourceModuleOwner }.keys -
-                        workspace.ignoredModules.map { ModuleId(it) }.toSet()
+                    workspace.ignoredModules.map { ModuleId(it) }.toSet()
                 val transitiveDependencies = HashSet<DependencyGraph<FoundModule, ModuleId>.DependencyNode>()
                 sourceModules.mapNotNull { graph.getNode(it) }.forEach {
                     it.getTransitiveDependencies(transitiveDependencies)
@@ -176,7 +191,6 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
             }
         }
     }
-
 
     private fun buildModulesXml(modules: FoundModules): Document {
         val dbf = DocumentBuilderFactory.newInstance()
@@ -231,7 +245,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
     }
 
     companion object {
-        val LOG = mu.KotlinLogging.logger {  }
+        val LOG = mu.KotlinLogging.logger { }
         val org_modelix_model_mpsplugin = ModuleId("c5e5433e-201f-43e2-ad14-a6cba8c80cd6")
         val org_modelix_model_api = ModuleId("cc99dce1-49f3-4392-8dbf-e22ca47bd0af")
     }
@@ -244,5 +258,3 @@ suspend fun HttpClient.downloadFile(file: File, url: String) {
         data.copyTo(file.writeChannel())
     }
 }
-
-

@@ -58,7 +58,7 @@ class WorkspaceProgressItems() {
         val description: String,
         var done: Boolean = false,
         var failed: Boolean = false,
-        var started: Boolean = false
+        var started: Boolean = false,
     ) {
 
         val logMessageStart: String get() = "### START $id ###"

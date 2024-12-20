@@ -20,5 +20,5 @@ enum class WorkspaceBuildStatus {
     FailedBuild, // If the build failed we still create the ZIP to let users fix the modules.
     FailedZip, // Failed to create the ZIP file. There is nothing to download.
     AllSuccessful, // The modules were built successfully and the ZIP is ready for download.
-    ZipSuccessful // The build failed, but the ZIP is ready for download.
+    ZipSuccessful, // The build failed, but the ZIP is ready for download.
 }

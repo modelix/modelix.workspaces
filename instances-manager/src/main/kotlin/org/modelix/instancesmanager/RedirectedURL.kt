@@ -24,7 +24,7 @@ class RedirectedURL(
     val workspaceReference: String,
     val sharedInstanceName: String,
     var instanceName: InstanceName?,
-    val userToken: AccessTokenPrincipal?
+    val userToken: AccessTokenPrincipal?,
 ) {
 
     fun getURLToRedirectTo(websocket: Boolean): String? {

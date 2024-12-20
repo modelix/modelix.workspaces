@@ -14,14 +14,14 @@
 
 package org.modelix.gitui
 
-import io.ktor.server.application.*
-import io.ktor.server.plugins.cors.*
-import io.ktor.http.*
-import io.ktor.server.routing.*
+import io.ktor.server.application.Application
+import io.ktor.server.application.install
+import io.ktor.server.plugins.cors.CORS
+import io.ktor.server.routing.Routing
+import io.ktor.server.routing.routing
 import java.io.File
 
 fun Application.gituiModule() {
-
     install(Routing)
 
     routing {

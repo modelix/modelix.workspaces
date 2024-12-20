@@ -41,8 +41,7 @@ class CredentialsEncryptionTest {
         val repo = GitRepository(url = "http://devops.example.com/tfs/Xxx/Yyy/_git/ZzZ/", credentials = credentials)
         assertEquals(
             "http://user:1A.23bc%24@devops.example.com/tfs/Xxx/Yyy/_git/ZzZ/",
-            repo.urlWithCredentials(credentialsEncryption)
+            repo.urlWithCredentials(credentialsEncryption),
         )
     }
-
 }

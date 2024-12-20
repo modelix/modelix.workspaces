@@ -13,16 +13,45 @@
  */
 package org.modelix.instancesmanager
 
-import io.ktor.http.*
-import io.ktor.server.application.*
-import io.ktor.server.html.*
-import io.ktor.server.http.content.*
-import io.ktor.server.plugins.cors.routing.*
-import io.ktor.server.request.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.Application
+import io.ktor.server.application.call
+import io.ktor.server.application.install
+import io.ktor.server.html.respondHtml
+import io.ktor.server.http.content.resources
+import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.request.receiveParameters
+import io.ktor.server.response.respondRedirect
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.Routing
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.routing
 import io.kubernetes.client.openapi.models.CoreV1Event
-import kotlinx.html.*
+import kotlinx.html.TR
+import kotlinx.html.a
+import kotlinx.html.body
+import kotlinx.html.br
+import kotlinx.html.div
+import kotlinx.html.h1
+import kotlinx.html.head
+import kotlinx.html.hiddenInput
+import kotlinx.html.img
+import kotlinx.html.link
+import kotlinx.html.postForm
+import kotlinx.html.span
+import kotlinx.html.style
+import kotlinx.html.submitInput
+import kotlinx.html.table
+import kotlinx.html.td
+import kotlinx.html.th
+import kotlinx.html.thead
+import kotlinx.html.title
+import kotlinx.html.tr
+import kotlinx.html.unsafe
 import org.json.JSONArray
 import org.modelix.workspaces.WorkspaceHash
 import java.time.OffsetDateTime
@@ -44,17 +73,19 @@ fun Application.adminModule() {
             call.respondHtml(HttpStatusCode.OK) {
                 head {
                     title("Manage Workspace Instances")
-                    link("../public/modelix-base.css", rel="stylesheet")
-                    style { unsafe {
-                        +"""
+                    link("../public/modelix-base.css", rel = "stylesheet")
+                    style {
+                        unsafe {
+                            +"""
                             tbody tr {
                                 border: 1px solid #dddddd;
                             }
                             tbody tr:nth-of-type(even) {
                                  background: none;
                             }
-                        """.trimIndent()
-                    }}
+                            """.trimIndent()
+                        }
+                    }
                 }
                 body {
                     style = "display: flex; flex-direction: column; align-items: center;"
@@ -77,9 +108,9 @@ fun Application.adminModule() {
                                 tr {
                                     th {
                                         +"Workspace Name"
-                                        br {  }
+                                        br { }
                                         +"Workspace ID"
-                                        br {  }
+                                        br { }
                                         +"Workspace Hash"
                                     }
                                     th {
@@ -100,11 +131,11 @@ fun Application.adminModule() {
                                             style = "font-weight: bold;"
                                             +(assignment.workspace.name ?: "<no name>")
                                         }
-                                        br{}
+                                        br {}
                                         span {
                                             +assignment.workspace.id
                                         }
-                                        br{}
+                                        br {}
                                         span {
                                             style = "color: #888;"
                                             +assignment.workspace.hash().hash
@@ -218,7 +249,7 @@ fun Application.adminModule() {
                 listOfNotNull(
                     it.eventTime,
                     it.lastTimestamp,
-                    it.firstTimestamp
+                    it.firstTimestamp,
                 ).firstOrNull()
             }
 

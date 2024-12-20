@@ -4,6 +4,7 @@ import org.modelix.authorization.permissions.PermissionParts
 import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.authorization.permissions.buildPermissionSchema
 
+@Suppress("ClassName")
 object WorkspacesPermissionSchema {
     val SCHEMA = buildPermissionSchema {
         resource("workspaces") {
@@ -36,7 +37,6 @@ object WorkspacesPermissionSchema {
                             }
                         }
                     }
-
                 }
 
                 resource("model-repository") {

@@ -13,14 +13,33 @@
  */
 package org.modelix.gitui
 
-import io.ktor.http.*
-import io.ktor.server.application.*
-import io.ktor.server.html.*
-import io.ktor.server.http.content.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
-import io.ktor.util.pipeline.*
-import kotlinx.html.*
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.call
+import io.ktor.server.html.respondHtml
+import io.ktor.server.http.content.resources
+import io.ktor.server.http.content.static
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.util.pipeline.PipelineContext
+import kotlinx.html.a
+import kotlinx.html.body
+import kotlinx.html.button
+import kotlinx.html.classes
+import kotlinx.html.div
+import kotlinx.html.h1
+import kotlinx.html.head
+import kotlinx.html.id
+import kotlinx.html.li
+import kotlinx.html.onClick
+import kotlinx.html.radioInput
+import kotlinx.html.script
+import kotlinx.html.style
+import kotlinx.html.title
+import kotlinx.html.ul
+import kotlinx.html.unsafe
 import java.io.File
 
 class Gitui {
@@ -39,7 +58,6 @@ class Gitui {
     fun unregisterGitRepository(folder: File) {
         repositories.values.filter { it.folder == folder }.forEach { repositories.remove(it.id) }
     }
-
 }
 val GIT_REPO_DIR_ATTRIBUTE_KEY = io.ktor.util.AttributeKey<File>("gitRepoDir")
 val MPS_INSTANCE_URL_ATTRIBUTE_KEY = io.ktor.util.AttributeKey<String>("mpsInstanceUrl")
@@ -101,13 +119,15 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.repoPage(repo: GitRep
             script {
                 src = "static/gitui.js"
             }
-            style { unsafe {
-              +"""
-              body {
-                  font-family: sans-serif;
-              }
-              """.trimIndent()
-            } }
+            style {
+                unsafe {
+                    +"""
+                      body {
+                          font-family: sans-serif;
+                      }
+                    """.trimIndent()
+                }
+            }
         }
         body {
             h1 { +"Branches" }
@@ -126,13 +146,13 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.repoPage(repo: GitRep
                 div {
                     radioInput {
                         name = "left"
-                        //onClick = """branchCheckboxClick(this, "${branch.shortName}", "${branch.commitHash}")"""
+                        // onClick = """branchCheckboxClick(this, "${branch.shortName}", "${branch.commitHash}")"""
                         value = branch.commitHash
                         classes = setOf("branchRadio")
                     }
                     radioInput {
                         name = "right"
-                        //onClick = """branchCheckboxClick(this, "${branch.shortName}", "${branch.commitHash}")"""
+                        // onClick = """branchCheckboxClick(this, "${branch.shortName}", "${branch.commitHash}")"""
                         value = branch.commitHash
                         classes = setOf("branchRadio")
                     }
@@ -173,7 +193,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.repoPage(repo: GitRep
                                             }
                                         }
                                     }
-                 */
+             */
         }
     }
 }

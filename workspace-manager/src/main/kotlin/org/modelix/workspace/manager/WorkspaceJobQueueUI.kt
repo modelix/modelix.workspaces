@@ -46,17 +46,19 @@ class WorkspaceJobQueueUI(val manager: WorkspaceManager) {
             call.respondHtmlSafe {
                 head {
                     title("Workspaces Build Queue")
-                    link("../../public/modelix-base.css", rel="stylesheet")
-                    style { unsafe {
-                        +"""
+                    link("../../public/modelix-base.css", rel = "stylesheet")
+                    style {
+                        unsafe {
+                            +"""
                             tbody tr {
                                 border: 1px solid #dddddd;
                             }
                             tbody tr:nth-of-type(even) {
                                  background: none;
                             }
-                        """.trimIndent()
-                    }}
+                            """.trimIndent()
+                        }
+                    }
                     meta {
                         httpEquiv = "refresh"
                         content = "3"
@@ -143,9 +145,11 @@ class WorkspaceJobQueueUI(val manager: WorkspaceManager) {
         }
 
         post("rebuild") {
-            val hash = WorkspaceHash(requireNotNull(call.receiveParameters()["workspaceHash"]) {
-                "Parameter 'workspaceHash' missing"
-            })
+            val hash = WorkspaceHash(
+                requireNotNull(call.receiveParameters()["workspaceHash"]) {
+                    "Parameter 'workspaceHash' missing"
+                },
+            )
             val workspace = requireNotNull(manager.getWorkspaceForHash(hash)) {
                 "Workspace with hash '$hash' unknown"
             }

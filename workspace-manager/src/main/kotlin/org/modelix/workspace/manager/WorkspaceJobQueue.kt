@@ -157,9 +157,10 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
     }
 
     companion object {
-        private val LOG = mu.KotlinLogging.logger {  }
+        private val LOG = mu.KotlinLogging.logger { }
         val KUBERNETES_NAMESPACE = System.getenv("KUBERNETES_NAMESPACE") ?: "default"
         val IMAGE_NAME = System.getenv("WORKSPACE_JOB_IMAGE_NAME") ?: "modelix/workspace-job"
+
         // XXX The name WORKSPACE_JOB_IMAGE_VERSION is misleading as it is only the prefix.
         // e.g. `latest` becomes `latest-2020.3`
         val IMAGE_VERSION = System.getenv("WORKSPACE_JOB_IMAGE_VERSION") ?: "latest"
@@ -189,6 +190,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
             return cachedPodLog ?: ""
         }
 
+        @Suppress("ktlint")
         fun generateJobYaml(jobName: String = kubernetesJobName): String {
             val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
 

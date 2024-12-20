@@ -108,7 +108,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
     suspend fun buildWorkspace() {
         progressItems.build.startKubernetesJob.logDone()
         val mavenFolders = progressItems.build.downloadMavenDependencies.execute { copyMavenDependencies() }
-        val gitFolders = progressItems.build.gitClone.execute { cloneGitRepositories() }
+        val gitFolders = cloneGitRepositories()
         val uploadFolders = progressItems.build.copyUploads.execute { copyUploads() }
         val mpsHome = ModuleOrigin(Path.of("/mps"), Path.of("/projector/ide"))
         val moduleFolders: List<ModuleOrigin> = (

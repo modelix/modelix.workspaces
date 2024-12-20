@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.modelix.workspaces.Credentials
+import org.modelix.workspaces.GitRepository
 
 class CredentialsEncryptionTest {
 
@@ -32,6 +33,16 @@ class CredentialsEncryptionTest {
         val decrypted = credentialsEncryption.decrypt(deserialized2)
         assertEquals(credentials.password, decrypted.password)
         assertArrayEquals(credentials.password.toByteArray(), decrypted.password.toByteArray())
+    }
+
+    @Test
+    fun `git URL with credentials`() {
+        val credentials = credentialsEncryption.encrypt(Credentials("user", "1A.23bc\$"))
+        val repo = GitRepository(url = "http://devops.example.com/tfs/Xxx/Yyy/_git/ZzZ/", credentials = credentials)
+        assertEquals(
+            "http://user:1A.23bc%24@devops.example.com/tfs/Xxx/Yyy/_git/ZzZ/",
+            repo.urlWithCredentials(credentialsEncryption)
+        )
     }
 
 }

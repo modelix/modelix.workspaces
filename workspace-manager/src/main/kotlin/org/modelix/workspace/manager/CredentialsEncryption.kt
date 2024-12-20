@@ -63,7 +63,7 @@ fun GitRepository.urlWithCredentials(ce: CredentialsEncryption): String {
     val decryptedCredentials = ce.decrypt(credentials ?: return url)
     return url {
         takeFrom(url)
-        user = decryptedCredentials.password
+        user = decryptedCredentials.user
         password = decryptedCredentials.password
     }
 }

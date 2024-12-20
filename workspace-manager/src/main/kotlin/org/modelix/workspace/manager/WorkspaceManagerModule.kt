@@ -1017,7 +1017,7 @@ fun Application.workspaceManagerModule() {
                             
                             echo "### START build-gitClone ###"
                             
-                            ${
+                            if ${
                                 workspace.gitRepositories.flatMapIndexed { index, git ->
                                     val dir = "/mps-projects/workspace-${workspace.id}/git/$index/"
                                     listOf(
@@ -1026,10 +1026,13 @@ fun Application.workspaceManagerModule() {
                                         "git clone ${git.urlWithCredentials(credentialsEncryption)}",
                                         "git checkout " + (git.commitHash ?: ("origin/" + git.branch)),
                                     )
-                                }.joinToString("\n")
+                                }.joinToString(" && ")
                             }
-                            
-                            echo "### DONE build-gitClone ###"
+                            then
+                              echo "### DONE build-gitClone ###"
+                            else
+                              echo "### FAILED build-gitClone ###"
+                            fi
                         """.lines().joinToString("\n") { it.trim() }.toByteArray())
                     }
                 }

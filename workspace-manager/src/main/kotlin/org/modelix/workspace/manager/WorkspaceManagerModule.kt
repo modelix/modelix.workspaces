@@ -51,6 +51,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.ktor.util.encodeBase64
 import io.ktor.util.pipeline.PipelineContext
 import kotlinx.html.DIV
 import kotlinx.html.FlowOrInteractiveOrPhrasingContent
@@ -1026,10 +1027,18 @@ fun Application.workspaceManagerModule() {
                             if ${
                                 workspace.gitRepositories.flatMapIndexed { index, git ->
                                     val dir = "/mps-projects/workspace-${workspace.id}/git/$index/"
+                                    
+                                    // https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Linux#use-a-pat
+                                    val authHeader = git.credentials?.let { 
+                                        credentialsEncryption.decrypt(it)
+                                    }?.let { 
+                                        """ -c http.extraheader="Authorization: Basic ${(it.user + ":" + it.password).encodeBase64()}""""
+                                    } ?: ""
+                                    
                                     listOf(
                                         "mkdir -p $dir",
+                                        "git$authHeader clone ${git.url} $dir",
                                         "cd $dir",
-                                        "git clone ${git.urlWithCredentials(credentialsEncryption)}",
                                         "git checkout " + (git.commitHash ?: ("origin/" + git.branch)),
                                     )
                                 }.joinToString(" && ")

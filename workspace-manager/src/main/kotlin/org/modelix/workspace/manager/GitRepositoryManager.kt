@@ -26,7 +26,11 @@ import org.eclipse.jgit.transport.http.JDKHttpConnection
 import org.eclipse.jgit.transport.http.JDKHttpConnectionFactory
 import org.modelix.workspaces.GitRepository
 import java.io.File
-import java.net.*
+import java.net.Authenticator
+import java.net.HttpURLConnection
+import java.net.PasswordAuthentication
+import java.net.Proxy
+import java.net.URL
 import java.util.zip.ZipOutputStream
 
 class GitRepositoryManager(val config: GitRepository, val workspaceDirectory: File) {
@@ -124,14 +128,14 @@ class GitRepositoryManager(val config: GitRepository, val workspaceDirectory: Fi
                 inputDir = root,
                 filter = { !it.startsWith(gitDir) },
                 mapPath = { repoDirectory.toPath().relativize(it) },
-                extractZipFiles = false
+                extractZipFiles = false,
             )
         }
         if (includeGitDir) {
             output.copyFiles(
                 inputDir = gitDir.toFile(),
                 mapPath = { repoDirectory.toPath().relativize(it) },
-                extractZipFiles = false
+                extractZipFiles = false,
             )
         }
     }

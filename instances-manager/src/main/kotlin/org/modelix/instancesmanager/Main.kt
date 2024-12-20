@@ -16,7 +16,6 @@ package org.modelix.instancesmanager
 import io.kubernetes.client.openapi.ApiException
 import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.Server
-import org.eclipse.jetty.server.handler.AbstractHandler
 import org.eclipse.jetty.server.handler.DefaultHandler
 import org.eclipse.jetty.server.handler.HandlerList
 import org.eclipse.jetty.server.handler.HandlerWrapper
@@ -33,6 +32,7 @@ import javax.servlet.http.HttpServletResponse
 
 object Main {
     private val LOG = mu.KotlinLogging.logger {}
+
     @JvmStatic
     fun main(args: Array<String>) {
         try {
@@ -97,7 +97,6 @@ object Main {
         proxyHandler.addServlet(ServletHolder(proxyServlet), "/*")
         proxyHandlerCondition.handler = proxyHandler
         handlerList.addHandler(proxyHandlerCondition)
-
 
 //        ProxyServlet proxyServlet = new ProxyServlet() {
 //            @Override

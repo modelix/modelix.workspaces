@@ -135,42 +135,45 @@ abstract class ProxyServletWithWebsocketSupport : ProxyServlet() {
             requestB.setSubProtocols(requestA.subProtocols)
             requestB.extensions = requestA.extensions
 
-            sessionB = client.connect(object : WebSocketListener {
-                override fun onWebSocketBinary(payload: ByteArray, offset: Int, len: Int) {
-                    val message = ByteBuffer.wrap(payload, offset, len)
-                    runSynchronized(lock) {
-                        if (sessionA == null) {
-                            pendingBinaryMessages += message
-                        } else {
-                            sessionA!!.remote.sendBytes(message)
-                            dataTransferred(sessionA, sessionB)
+            sessionB = client.connect(
+                object : WebSocketListener {
+                    override fun onWebSocketBinary(payload: ByteArray, offset: Int, len: Int) {
+                        val message = ByteBuffer.wrap(payload, offset, len)
+                        runSynchronized(lock) {
+                            if (sessionA == null) {
+                                pendingBinaryMessages += message
+                            } else {
+                                sessionA!!.remote.sendBytes(message)
+                                dataTransferred(sessionA, sessionB)
+                            }
                         }
                     }
-                }
 
-                override fun onWebSocketText(message: String) {
-                    runSynchronized(lock) {
-                        if (sessionA == null) {
-                            pendingTextMessages += message
-                        } else {
-                            sessionA!!.remote.sendString(message)
-                            dataTransferred(sessionA, sessionB)
+                    override fun onWebSocketText(message: String) {
+                        runSynchronized(lock) {
+                            if (sessionA == null) {
+                                pendingTextMessages += message
+                            } else {
+                                sessionA!!.remote.sendString(message)
+                                dataTransferred(sessionA, sessionB)
+                            }
                         }
                     }
-                }
 
-                override fun onWebSocketClose(statusCode: Int, reason: String) {
-                    sessionA?.close(statusCode, reason)
-                }
+                    override fun onWebSocketClose(statusCode: Int, reason: String) {
+                        sessionA?.close(statusCode, reason)
+                    }
 
-                override fun onWebSocketConnect(session: Session) {
-                    sessionB = session
-                }
+                    override fun onWebSocketConnect(session: Session) {
+                        sessionB = session
+                    }
 
-                override fun onWebSocketError(cause: Throwable) {
-                    LOG.error("", cause)
-                }
-            }, redirectedURL, requestB).get()
+                    override fun onWebSocketError(cause: Throwable) {
+                        LOG.error("", cause)
+                    }
+                },
+                redirectedURL, requestB,
+            ).get()
 
             val responseB = sessionB!!.upgradeResponse
             responseB.acceptedSubProtocol?.let { responseA.acceptedSubProtocol = it }

@@ -22,22 +22,23 @@ import org.modelix.model.persistent.HashUtil
 const val DEFAULT_MPS_VERSION = "2024.1"
 
 @Serializable
-data class Workspace(val id: String,
-                     val name: String? = null,
-                     val mpsVersion: String? = null,
-                     val memoryLimit: String = "2.0Gi",
-                     val modelRepositories: List<ModelRepository> = listOf(),
-                     val gitRepositories: List<GitRepository> = listOf(),
-                     val mavenRepositories: List<MavenRepository> = listOf(),
-                     val mavenDependencies: List<String> = listOf(),
-                     val uploads: List<String> = ArrayList(),
-                     val ignoredModules: List<String> = ArrayList(),
-                     val additionalGenerationDependencies: List<GenerationDependency> = ArrayList(),
-                     val loadUsedModulesOnly: Boolean = false,
-                     val sharedInstances: List<SharedInstance> = emptyList(),
-                     @Deprecated("Replaced by query parameter")
-                     val waitForIndexer: Boolean = true,
-                     val modelSyncEnabled: Boolean = false
+data class Workspace(
+    val id: String,
+    val name: String? = null,
+    val mpsVersion: String? = null,
+    val memoryLimit: String = "2.0Gi",
+    val modelRepositories: List<ModelRepository> = listOf(),
+    val gitRepositories: List<GitRepository> = listOf(),
+    val mavenRepositories: List<MavenRepository> = listOf(),
+    val mavenDependencies: List<String> = listOf(),
+    val uploads: List<String> = ArrayList(),
+    val ignoredModules: List<String> = ArrayList(),
+    val additionalGenerationDependencies: List<GenerationDependency> = ArrayList(),
+    val loadUsedModulesOnly: Boolean = false,
+    val sharedInstances: List<SharedInstance> = emptyList(),
+    @Deprecated("Replaced by query parameter")
+    val waitForIndexer: Boolean = true,
+    val modelSyncEnabled: Boolean = false,
 ) {
     fun uploadIds() = uploads.map { UploadId(it) }
     fun toYaml() = Yaml.default.encodeToString(this).replace("\nwaitForIndexer: false", "").replace("\nwaitForIndexer: true", "")
@@ -93,20 +94,26 @@ value class WorkspaceHash(val hash: String) {
 }
 
 @Serializable
-data class ModelRepository(val id: String,
-                           val bindings: List<Binding> = listOf())
+data class ModelRepository(
+    val id: String,
+    val bindings: List<Binding> = listOf(),
+)
 
 @Serializable
-data class Binding(val project: String? = null,
-                   val module: String? = null)
+data class Binding(
+    val project: String? = null,
+    val module: String? = null,
+)
 
 @Serializable
-data class GitRepository(val url: String,
-                         val name: String? = null,
-                         val branch: String = "master",
-                         val commitHash: String? = null,
-                         val paths: List<String> = listOf(),
-                         val credentials: Credentials? = null)
+data class GitRepository(
+    val url: String,
+    val name: String? = null,
+    val branch: String = "master",
+    val commitHash: String? = null,
+    val paths: List<String> = listOf(),
+    val credentials: Credentials? = null,
+)
 
 @Serializable
 data class Credentials(val user: String, val password: String)

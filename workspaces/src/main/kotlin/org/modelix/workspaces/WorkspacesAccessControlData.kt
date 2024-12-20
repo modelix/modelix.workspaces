@@ -15,7 +15,7 @@ data class WorkspacesAccessControlData(
     /**
      * Grants based on user roles extracted from the JWT token.
      */
-    val grantsToRoles: Map<String, Set<String>> = emptyMap()
+    val grantsToRoles: Map<String, Set<String>> = emptyMap(),
 ) {
     fun load(jwt: DecodedJWT, permissionEvaluator: PermissionEvaluator) {
         val util = ModelixJWTUtil()

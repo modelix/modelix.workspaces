@@ -49,7 +49,7 @@ class ModelServerWorkspacePersistence(authTokenProvider: () -> String?) : Worksp
     override fun newWorkspace(): Workspace {
         val workspace = Workspace(
             id = generateId(),
-            modelRepositories = listOf(ModelRepository(id = "default"))
+            modelRepositories = listOf(ModelRepository(id = "default")),
         )
         modelClient.put(key(workspace.id), Json.encodeToString(workspace))
         setWorkspaceIds(getWorkspaceIds() + workspace.id)

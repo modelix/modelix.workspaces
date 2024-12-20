@@ -15,7 +15,6 @@ class CredentialsEncryption(key: String) {
         private const val ENCRYPTED_PREFIX = "encrypted:"
     }
 
-
     private val encryptor = AES256TextEncryptor()
 
     init {

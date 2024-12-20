@@ -135,8 +135,6 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 fun Application.workspaceManagerModule() {
-
-
     val credentialsEncryption = createCredentialEncryption()
     val manager = WorkspaceManager(credentialsEncryption)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
@@ -160,18 +158,20 @@ fun Application.workspaceManagerModule() {
                 call.respondHtmlSafe(HttpStatusCode.OK) {
                     head {
                         title("Workspaces")
-                        link("../public/modelix-base.css", rel="stylesheet")
-                        style {unsafe {
-                            +"""
-                            form {
-                                margin: auto;
+                        link("../public/modelix-base.css", rel = "stylesheet")
+                        style {
+                            unsafe {
+                                +"""
+                                form {
+                                    margin: auto;
+                                }
+                                .workspace-name {
+                                    font-weight: bold;
+                                    color: #000000;
+                                }
+                                """.trimIndent()
                             }
-                            .workspace-name {
-                                font-weight: bold;
-                                color: #000000;
-                            }
-                        """.trimIndent()
-                        }}
+                        }
                     }
                     body {
                         style = "display: flex; flex-direction: column; align-items: center;"
@@ -197,7 +197,7 @@ fun Application.workspaceManagerModule() {
                             table {
                                 thead {
                                     tr {
-                                        th { +"Workspace"}
+                                        th { +"Workspace" }
                                         th {
                                             colSpan = "6"
                                             +"Actions"
@@ -314,7 +314,7 @@ fun Application.workspaceManagerModule() {
                                             form {
                                                 action = "new"
                                                 method = FormMethod.post
-                                                input (classes = "btn") {
+                                                input(classes = "btn") {
                                                     type = InputType.submit
                                                     value = "+ New Workspace"
                                                 }
@@ -416,7 +416,7 @@ fun Application.workspaceManagerModule() {
                     val folder = manager.getUploadFolder(uploadId)
                     call.respondOutputStream(ContentType.Application.Zip) {
                         ZipOutputStream(this).use { zip ->
-                            zip.copyFiles(folder, mapPath = { folder.toPath().parent.relativize(it)}, extractZipFiles = true)
+                            zip.copyFiles(folder, mapPath = { folder.toPath().parent.relativize(it) }, extractZipFiles = true)
                         }
                     }
                 }
@@ -443,8 +443,8 @@ fun Application.workspaceManagerModule() {
                     this.call.respondHtml(HttpStatusCode.OK) {
                         head {
                             title { text("Edit Workspace") }
-                            link("../../public/modelix-base.css", rel="stylesheet")
-                            link("../../public/menu-bar.css", rel="stylesheet")
+                            link("../../public/modelix-base.css", rel = "stylesheet")
+                            link("../../public/menu-bar.css", rel = "stylesheet")
                         }
                         body {
                             div("menu") {
@@ -499,7 +499,7 @@ fun Application.workspaceManagerModule() {
                             div {
                                 style = "display: flex"
                                 div {
-                                    h1 { +"Edit Workspace"}
+                                    h1 { +"Edit Workspace" }
                                     form {
                                         val configYaml = workspace.maskCredentials().toYaml()
                                         action = "./update"
@@ -633,7 +633,7 @@ fun Application.workspaceManagerModule() {
                                 style = "padding: 3px;"
                                 b { +"Uploads:" }
                                 val allUploads = manager.getExistingUploads().associateBy { it.name }
-                                val uploadContent: (Map.Entry<String, File?>)->String = { uploads ->
+                                val uploadContent: (Map.Entry<String, File?>) -> String = { uploads ->
                                     val fileNames: List<File> = (uploads.value?.listFiles()?.toList() ?: listOf())
                                     fileNames.joinToString(", ") { it.name }
                                 }
@@ -685,7 +685,7 @@ fun Application.workspaceManagerModule() {
                                                             name = "uploadId"
                                                             value = upload.key
                                                         }
-                                                        submitInput (classes = "btn"){
+                                                        submitInput(classes = "btn") {
                                                             style = "background-color: red"
                                                             value = "Delete"
                                                         }
@@ -727,7 +727,7 @@ fun Application.workspaceManagerModule() {
                                             }
                                         }
                                         div {
-                                            input (classes = "btn") {
+                                            input(classes = "btn") {
                                                 type = InputType.submit
                                                 value = "Upload"
                                             }
@@ -860,15 +860,16 @@ fun Application.workspaceManagerModule() {
                                 formParameters = parameters {
                                     append("userId", userId)
                                     append("permissionId", permissionId.fullId)
-                                }
+                                },
                             ) {
                                 expectSuccess = true
                                 bearerAuth(
                                     manager.jwtUtil.createAccessToken(
-                                        "workspace-manager@modelix.org", listOf(
-                                            PermissionSchemaBase.cluster.admin.fullId
-                                        )
-                                    )
+                                        "workspace-manager@modelix.org",
+                                        listOf(
+                                            PermissionSchemaBase.cluster.admin.fullId,
+                                        ),
+                                    ),
                                 )
                             }
                         }
@@ -907,7 +908,7 @@ fun Application.workspaceManagerModule() {
                 get("buildlog") {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val job = manager.buildWorkspaceDownloadFileAsync(workspaceHash)
-                    val respondStatus: suspend (String, DIV.() -> Unit)->Unit = { refresh, text ->
+                    val respondStatus: suspend (String, DIV.() -> Unit) -> Unit = { refresh, text ->
                         call.respondHtmlSafe {
                             head {
                                 meta {
@@ -919,8 +920,8 @@ fun Application.workspaceManagerModule() {
                                 div {
                                     text()
                                 }
-                                br {  }
-                                br {  }
+                                br { }
+                                br { }
                                 pre {
                                     +job.getLog()
                                 }
@@ -963,15 +964,19 @@ fun Application.workspaceManagerModule() {
 
                     // more extensive check to ensure only the build job has access
                     if (!run {
-                        val token = call.principal<AccessTokenPrincipal>()?.jwt ?: return@run false
-                        if (!manager.jwtUtil.isAccessToken(token)) return@run false
-                        if (token.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
-                        true
-                    }) throw NoPermissionException("Only permitted to the workspace-job")
+                            val token = call.principal<AccessTokenPrincipal>()?.jwt ?: return@run false
+                            if (!manager.jwtUtil.isAccessToken(token)) return@run false
+                            if (token.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
+                            true
+                        }
+                    ) {
+                        throw NoPermissionException("Only permitted to the workspace-job")
+                    }
 
                     val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
                     val jwtToken = manager.workspaceJobTokenGenerator(workspace.workspace)
                     call.respondTarGz { tar ->
+                        @Suppress("ktlint")
                         tar.putFile("Dockerfile", """
                             FROM ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
                             
@@ -1012,6 +1017,7 @@ fun Application.workspaceManagerModule() {
 
                         // Separate file for git command because they may contain the credentials
                         // and the commands shouldn't appear in the log
+                        @Suppress("ktlint")
                         tar.putFile("clone.sh", """
                             #!/bin/sh
                             
@@ -1050,7 +1056,7 @@ fun Application.workspaceManagerModule() {
                     call.checkPermission(PermissionSchemaBase.permissionData.read)
                     call.respondText(
                         Json.encodeToString(manager.accessControlPersistence.read()),
-                        ContentType.Application.Json
+                        ContentType.Application.Json,
                     )
                 }
                 route("workspaces") {
@@ -1111,7 +1117,7 @@ fun Application.workspaceManagerModule() {
                 "diff-plugin.zip",
                 "generator-execution-plugin.zip",
                 "legacy-sync-plugin.zip",
-                "workspace-client-plugin.zip"
+                "workspace-client-plugin.zip",
             )
 
             call.respondTarGz { tar ->
@@ -1219,15 +1225,16 @@ fun Workspace.maskCredentials(): Workspace {
         repository.copy(
             credentials = repository.credentials?.copy(
                 user = MASKED_CREDENTIAL_VALUE,
-                password = MASKED_CREDENTIAL_VALUE
-            )
+                password = MASKED_CREDENTIAL_VALUE,
+            ),
         )
     }
     return this.copy(gitRepositories = gitRepositories)
 }
 
 fun mergeMaskedCredentialsWithPreviousCredentials(
-    receivedWorkspaceConfig: Workspace, existingWorkspaceConfig: Workspace
+    receivedWorkspaceConfig: Workspace,
+    existingWorkspaceConfig: Workspace,
 ): Workspace {
     val gitRepositories = receivedWorkspaceConfig.gitRepositories.mapIndexed { i, receivedRepository ->
         // Credentials will be reused, when:
@@ -1252,7 +1259,7 @@ fun mergeMaskedCredentialsWithPreviousCredentials(
 
 private fun mergeMaskedCredentialsWithPreviousCredentials(
     receivedRepository: GitRepository,
-    matchingRepository: GitRepository?
+    matchingRepository: GitRepository?,
 ): Credentials? {
     val receivedCredentials = receivedRepository.credentials
     if (receivedCredentials == null) {

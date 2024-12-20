@@ -14,7 +14,6 @@
 package org.modelix.instancesmanager
 
 import com.google.common.cache.CacheBuilder
-import com.nimbusds.jose.jwk.JWK
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.auth.Auth
@@ -85,12 +84,16 @@ class DeploymentManager {
         install(Auth) {
             bearer {
                 loadTokens {
-                    BearerTokens(jwtUtil.createAccessToken(
-                        "instances-manager@modelix.org", listOf(
-                            WorkspacesPermissionSchema.workspaces.readAllConfigs.fullId,
-                            PermissionSchemaBase.permissionData.read.fullId,
-                        )
-                    ), "")
+                    BearerTokens(
+                        jwtUtil.createAccessToken(
+                            "instances-manager@modelix.org",
+                            listOf(
+                                WorkspacesPermissionSchema.workspaces.readAllConfigs.fullId,
+                                PermissionSchemaBase.permissionData.read.fullId,
+                            ),
+                        ),
+                        "",
+                    )
                 }
             }
         }
@@ -149,7 +152,7 @@ class DeploymentManager {
                     takeFrom(workspaceServerUrl)
                     appendPathSegments("rest", "access-control-data")
                 }
-            }.bodyAsText().let { Json{ ignoreUnknownKeys = true }.decodeFromString(it) }
+            }.bodyAsText().let { Json { ignoreUnknownKeys = true }.decodeFromString(it) }
         }
     }
 
@@ -197,10 +200,10 @@ class DeploymentManager {
                         workspace,
                         deployment.first,
                         deployment.second,
-                        disabledInstances.contains(deployment.second)
+                        disabledInstances.contains(deployment.second),
                     )
                 },
-                isLatest = latestWorkspaceHashes.contains(it.key)
+                isLatest = latestWorkspaceHashes.contains(it.key),
             )
         }
     }
@@ -212,7 +215,7 @@ class DeploymentManager {
                     assignment.value.workspace,
                     deployment.first,
                     deployment.second,
-                    disabledInstances.contains(deployment.second)
+                    disabledInstances.contains(deployment.second),
                 )
             }
         }
@@ -413,7 +416,7 @@ class DeploymentManager {
             for (pod in pods.items) {
                 if (!pod.metadata!!.name!!.startsWith(deploymentName.name)) continue
                 return coreApi
-                    .readNamespacedPodLog(pod.metadata!!.name,KUBERNETES_NAMESPACE)
+                    .readNamespacedPodLog(pod.metadata!!.name, KUBERNETES_NAMESPACE)
                     .container(pod.spec!!.containers[0].name)
                     .pretty("true")
                     .tailLines(10_000)
@@ -455,8 +458,10 @@ class DeploymentManager {
         if (!matcher.matches()) return null
         var workspaceId = matcher.group(1)
         var workspaceHash = matcher.group(2) ?: return null
-        if (!workspaceHash.contains("*")) workspaceHash =
-            workspaceHash.substring(0, 5) + "*" + workspaceHash.substring(5)
+        if (!workspaceHash.contains("*")) {
+            workspaceHash =
+                workspaceHash.substring(0, 5) + "*" + workspaceHash.substring(5)
+        }
         return workspaceCache.computeIfAbsent(WorkspaceHash(workspaceHash)) {
             getWorkspaceByHash(it)
         }
@@ -472,7 +477,7 @@ class DeploymentManager {
         workspace: WorkspaceAndHash,
         owner: InstanceOwner,
         instanceName: InstanceName,
-        userToken: AccessTokenPrincipal?
+        userToken: AccessTokenPrincipal?,
     ): Boolean {
         val originalDeploymentName = WORKSPACE_CLIENT_DEPLOYMENT_NAME
         val appsApi = AppsV1Api()
@@ -489,8 +494,8 @@ class DeploymentManager {
             deployment.metadata!!.resourceVersion(null)
             deployment.status = null
             deployment.metadata!!.putAnnotationsItem("kubectl.kubernetes.io/last-applied-configuration", null)
-            //deployment.metadata!!.putAnnotationsItem(INSTANCE_PER_USER_ANNOTATION_KEY, null)
-            //deployment.metadata!!.putAnnotationsItem(MAX_UNASSIGNED_INSTANCES_ANNOTATION_KEY, null)
+            // deployment.metadata!!.putAnnotationsItem(INSTANCE_PER_USER_ANNOTATION_KEY, null)
+            // deployment.metadata!!.putAnnotationsItem(MAX_UNASSIGNED_INSTANCES_ANNOTATION_KEY, null)
             deployment.metadata!!.name(instanceName.name)
             deployment.metadata!!.putLabelsItem("component", instanceName.name)
             deployment.spec!!.selector.putMatchLabelsItem("component", instanceName.name)
@@ -640,9 +645,9 @@ class DeploymentManager {
             val expectedNumUnassigned = getNumberOfUnassigned()
 
             val expectedInstances = (
-                    workspace.sharedInstances.map { SharedInstanceOwner(it.name) }
-                            + (0 until expectedNumUnassigned).map { UnassignedInstanceOwner(it) }
-                    ).toSet()
+                workspace.sharedInstances.map { SharedInstanceOwner(it.name) } +
+                    (0 until expectedNumUnassigned).map { UnassignedInstanceOwner(it) }
+                ).toSet()
             val existingInstances = owner2deployment.keys.filterNot { it is UserInstanceOwner }.toSet()
             for (toRemove in (existingInstances - expectedInstances)) {
                 owner2deployment.remove(toRemove)

@@ -24,7 +24,7 @@ import java.util.*
 
 class MavenDownloader(val workspace: Workspace, val workspaceDir: File) {
 
-    fun downloadAndCopyFromMaven(coordinates: String, outputHandler: ((String)->Unit)? = null): File {
+    fun downloadAndCopyFromMaven(coordinates: String, outputHandler: ((String) -> Unit)? = null): File {
         if (workspace.mavenRepositories.isNotEmpty()) {
             downloadFromMaven(coordinates, outputHandler)
         }
@@ -32,7 +32,7 @@ class MavenDownloader(val workspace: Workspace, val workspaceDir: File) {
         return copyArtifacts(coordinates, outputHandler)
     }
 
-    fun copyArtifacts(coordinates: String, outputHandler: ((String)->Unit)? = null): File {
+    fun copyArtifacts(coordinates: String, outputHandler: ((String) -> Unit)? = null): File {
         val request = DefaultInvocationRequest()
         request.isOffline = true
         request.goals = listOf("dependency:copy")
@@ -55,7 +55,7 @@ class MavenDownloader(val workspace: Workspace, val workspaceDir: File) {
         return outputDir
     }
 
-    fun downloadFromMaven(coordinates: String, outputHandler: ((String)->Unit)? = null) {
+    fun downloadFromMaven(coordinates: String, outputHandler: ((String) -> Unit)? = null) {
         val request = DefaultInvocationRequest()
         request.goals = listOf("dependency:get")
         request.isBatchMode = true

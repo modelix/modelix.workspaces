@@ -1,11 +1,10 @@
 package org.modelix.workspace.manager
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
 import org.modelix.workspaces.Workspace
-import org.junit.jupiter.api.Assertions.assertEquals
-
 
 class WorkspaceManagerModuleTest {
 
@@ -18,10 +17,10 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser",
-                        password = "aPassword"
-                    )
-                )
-            )
+                        password = "aPassword",
+                    ),
+                ),
+            ),
         )
 
         val maskedWorkspaceConfig = workspaceConfig.maskCredentials()
@@ -40,18 +39,18 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser",
-                        password = "aPassword"
-                    )
-                )
-            )
+                        password = "aPassword",
+                    ),
+                ),
+            ),
         )
         val newWorkspaceConfig = Workspace(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
-                    url = "aUrl"
-                )
-            )
+                    url = "aUrl",
+                ),
+            ),
         )
 
         val mergedWorkspaceConfig = mergeMaskedCredentialsWithPreviousCredentials(newWorkspaceConfig, existingWorkspaceConfig)
@@ -69,22 +68,25 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser",
-                        password = MASKED_CREDENTIAL_VALUE
-                    )
-                )
-            )
+                        password = MASKED_CREDENTIAL_VALUE,
+                    ),
+                ),
+            ),
         )
 
         val mergedWorkspaceConfig = mergeMaskedCredentialsWithPreviousCredentials(newWorkspaceConfig, existingWorkspaceConfig)
 
-        assertEquals(Workspace(
-            id = "aId",
-            gitRepositories = listOf(
-                GitRepository(
-                    url = "aUrl"
-                )
-            )
-        ), mergedWorkspaceConfig)
+        assertEquals(
+            Workspace(
+                id = "aId",
+                gitRepositories = listOf(
+                    GitRepository(
+                        url = "aUrl",
+                    ),
+                ),
+            ),
+            mergedWorkspaceConfig,
+        )
     }
 
     @Test
@@ -97,10 +99,10 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser",
-                        password = "aPassword"
-                    )
-                )
-            )
+                        password = "aPassword",
+                    ),
+                ),
+            ),
         )
 
         val mergedWorkspaceConfig = mergeMaskedCredentialsWithPreviousCredentials(newWorkspaceConfig, existingWorkspaceConfig)
@@ -112,10 +114,10 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser",
-                        password = "aPassword"
-                    )
-                )
-            )
+                        password = "aPassword",
+                    ),
+                ),
+            ),
         )
         assertEquals(expectedWorkspaceConfig, mergedWorkspaceConfig)
     }
@@ -129,10 +131,10 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser",
-                        password = "aPassword"
-                    )
-                )
-            )
+                        password = "aPassword",
+                    ),
+                ),
+            ),
         )
         val newWorkspaceConfig = Workspace(
             id = "aId",
@@ -141,10 +143,10 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl2",
                     credentials = Credentials(
                         user = MASKED_CREDENTIAL_VALUE,
-                        password = "aPassword"
-                    )
-                )
-            )
+                        password = "aPassword",
+                    ),
+                ),
+            ),
         )
 
         val mergedWorkspaceConfig = mergeMaskedCredentialsWithPreviousCredentials(newWorkspaceConfig, existingWorkspaceConfig)
@@ -152,13 +154,12 @@ class WorkspaceManagerModuleTest {
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
-                    url = "aUrl2"
-                )
-            )
+                    url = "aUrl2",
+                ),
+            ),
         )
         assertEquals(expectedWorkspaceConfig, mergedWorkspaceConfig)
     }
-
 
     @Test
     fun `masked credentials are replaced with previous credentials`() {
@@ -169,17 +170,17 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser",
-                        password = "aPassword"
-                    )
+                        password = "aPassword",
+                    ),
                 ),
                 GitRepository(
                     url = "aUrl2",
                     credentials = Credentials(
                         user = "aUser2",
-                        password = "aPassword2"
-                    )
-                )
-            )
+                        password = "aPassword2",
+                    ),
+                ),
+            ),
         )
         val maskedWorkspace = existingWorkspaceConfig.maskCredentials()
 
@@ -198,10 +199,10 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser",
-                        password = "aPassword"
-                    )
-                )
-            )
+                        password = "aPassword",
+                    ),
+                ),
+            ),
         )
         val newWorkspaceConfig = Workspace(
             id = "aId",
@@ -210,10 +211,10 @@ class WorkspaceManagerModuleTest {
                     url = "aUrl",
                     credentials = Credentials(
                         user = "aUser2",
-                        password = "aPassword2"
-                    )
-                )
-            )
+                        password = "aPassword2",
+                    ),
+                ),
+            ),
         )
 
         val mergedWorkspaceConfig =

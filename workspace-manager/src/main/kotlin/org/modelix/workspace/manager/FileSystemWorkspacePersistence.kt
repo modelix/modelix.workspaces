@@ -9,8 +9,6 @@ import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacePersistence
-import org.modelix.workspaces.WorkspacesAccessControlData
-import org.modelix.workspaces.WorkspacesPermissionSchema
 import org.modelix.workspaces.withHash
 import java.io.File
 import kotlin.math.max
@@ -51,7 +49,7 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
     override fun newWorkspace(): Workspace {
         val workspace = Workspace(
             id = newWorkspaceId(),
-            modelRepositories = listOf(ModelRepository(id = "default"))
+            modelRepositories = listOf(ModelRepository(id = "default")),
         )
         update(workspace)
         return workspace
@@ -77,7 +75,7 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
         db = db.copy(
             lastUsedWorkspaceId = max(db.lastUsedWorkspaceId, workspace.id.toLong(16)),
             workspaces = db.workspaces + (workspace.id to workspace),
-            workspacesByHash = db.workspacesByHash + (hash to workspace)
+            workspacesByHash = db.workspacesByHash + (hash to workspace),
         )
         writeDBFile()
         return hash

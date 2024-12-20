@@ -13,7 +13,6 @@
  */
 package org.modelix.workspace.manager
 
-import org.apache.commons.io.FileUtils
 import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.permissions.FileSystemAccessControlPersistence
 import org.modelix.model.persistent.SerializationUtil
@@ -46,7 +45,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read.fullId,
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.readCredentials.fullId,
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).buildResult.write.fullId,
-            ) + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read.fullId }
+            ) + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read.fullId },
         )
     }
     val buildJobs = WorkspaceJobQueue(tokenGenerator = workspaceJobTokenGenerator)
@@ -57,12 +56,15 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         // migrate existing workspaces from model-server persistence to file system persistence
         if (!(persistenceFile.exists())) {
             val legacyWorkspacePersistence: WorkspacePersistence = ModelServerWorkspacePersistence({
-                jwtUtil.createAccessToken("workspace-manager@modelix.org", listOf(
-                    "legacy-user-defined-entries/write",
-                    "legacy-user-defined-entries/read",
-                    "legacy-global-objects/add",
-                    "legacy-global-objects/read",
-                ))
+                jwtUtil.createAccessToken(
+                    "workspace-manager@modelix.org",
+                    listOf(
+                        "legacy-user-defined-entries/write",
+                        "legacy-user-defined-entries/read",
+                        "legacy-global-objects/add",
+                        "legacy-global-objects/read",
+                    ),
+                )
             })
             for (id in legacyWorkspacePersistence.getWorkspaceIds()) {
                 val ws = legacyWorkspacePersistence.getWorkspaceForId(id) ?: continue

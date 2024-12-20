@@ -1039,7 +1039,7 @@ fun Application.workspaceManagerModule() {
                             else
                               echo "### FAILED build-gitClone ###"
                             fi
-                        """.lines().joinToString("\n") { it.trim() }.toByteArray())
+                        """.lines().joinToString("\n") { it.trim() }.also { println(it) }.toByteArray())
                     }
                 }
             }

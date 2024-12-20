@@ -4,5 +4,5 @@ WORKDIR /instances-manager/
 EXPOSE 33332
 
 COPY build/install/instances-manager/ /instances-manager/
-ENV instances_MANAGER_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -XX:MaxRAMPercentage=85"
+ENV INSTANCES_MANAGER_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -XX:MaxRAMPercentage=85"
 CMD ["/instances-manager/bin/instances-manager"]

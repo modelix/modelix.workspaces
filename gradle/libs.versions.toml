@@ -5,7 +5,7 @@ kotlin = "2.1.0"
 kotlinx-coroutines = "1.10.0"
 kotlin-logging = "3.0.5"
 ktor = "2.3.12"
-logback = "1.5.14"
+logback = "1.5.16"
 modelix-core = "11.1.2"
 modelix-mps-plugins = "0.9.3"
 

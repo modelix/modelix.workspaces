@@ -7,7 +7,7 @@ kotlin-logging = "3.0.5"
 ktor = "2.3.12"
 logback = "1.5.14"
 modelix-core = "11.1.2"
-modelix-mps-plugins = "0.9.3"
+modelix-mps-plugins = "0.10.1"
 
 [libraries]
 auth0-jwt = { group = "com.auth0", name = "java-jwt", version = "4.4.0" }

@@ -1,5 +1,5 @@
 [versions]
-jetty = "9.4.55.v20240627"
+jetty = "9.4.57.v20241219"
 junit = "5.11.4"
 kotlin = "2.1.0"
 kotlinx-coroutines = "1.10.0"

@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21.0.5_11-jdk@sha256:843686b2422d68890bb3ee90c5d08d9b325b9a2acf06ffca42351c2d187d3921
+FROM eclipse-temurin:21.0.5_11-jdk@sha256:d59ca4960a17035592a5c928343ba56862ea6067929da4e776d7a0f4ec26aa44
 
 RUN apt update && apt install -y git
 

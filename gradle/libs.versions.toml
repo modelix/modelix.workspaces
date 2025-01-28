@@ -11,7 +11,7 @@ modelix-mps-plugins = "0.9.3"
 
 [libraries]
 auth0-jwt = { group = "com.auth0", name = "java-jwt", version = "4.4.0" }
-commons-codec = { group = "commons-codec", name = "commons-codec", version = "1.17.1" }
+commons-codec = { group = "commons-codec", name = "commons-codec", version = "1.18.0" }
 commons-io = { group = "commons-io", name = "commons-io", version = "2.18.0" }
 commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version = "3.17.0" }
 commons-text = { group = "org.apache.commons", name = "commons-text", version = "1.13.0" }

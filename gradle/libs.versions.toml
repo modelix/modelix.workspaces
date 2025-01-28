@@ -1,7 +1,7 @@
 [versions]
 jetty = "9.4.55.v20240627"
 junit = "5.11.4"
-kotlin = "2.1.0"
+kotlin = "2.1.10"
 kotlinx-coroutines = "1.10.0"
 kotlin-logging = "3.0.5"
 ktor = "2.3.12"

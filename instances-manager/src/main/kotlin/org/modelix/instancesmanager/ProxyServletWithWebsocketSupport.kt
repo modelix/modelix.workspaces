@@ -160,7 +160,7 @@ abstract class ProxyServletWithWebsocketSupport : ProxyServlet() {
                         }
                     }
 
-                    override fun onWebSocketClose(statusCode: Int, reason: String) {
+                    override fun onWebSocketClose(statusCode: Int, reason: String?) {
                         sessionA?.close(statusCode, reason)
                     }
 

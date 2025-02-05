@@ -46,13 +46,12 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
-import io.ktor.server.routing.Routing
+import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.util.encodeBase64
-import io.ktor.util.pipeline.PipelineContext
 import kotlinx.html.DIV
 import kotlinx.html.FlowOrInteractiveOrPhrasingContent
 import kotlinx.html.FormEncType
@@ -97,7 +96,6 @@ import kotlinx.html.ul
 import kotlinx.html.unsafe
 import kotlinx.html.visit
 import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
@@ -140,7 +138,6 @@ fun Application.workspaceManagerModule() {
     val manager = WorkspaceManager(credentialsEncryption)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
-    install(Routing)
     install(ModelixAuthorization) {
         permissionSchema = WorkspacesPermissionSchema.SCHEMA
         accessControlPersistence = manager.accessControlPersistence
@@ -428,7 +425,7 @@ fun Application.workspaceManagerModule() {
             }
 
             route("{workspaceId}") {
-                fun PipelineContext<*, ApplicationCall>.workspaceId() = call.parameters["workspaceId"]!!
+                fun RoutingContext.workspaceId() = call.parameters["workspaceId"]!!
 
                 get("edit") {
                     val id = workspaceId()

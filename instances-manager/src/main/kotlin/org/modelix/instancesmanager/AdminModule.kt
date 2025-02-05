@@ -18,7 +18,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
-import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.resources
@@ -26,7 +25,6 @@ import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
-import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -58,7 +56,6 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 
 fun Application.adminModule() {
-    install(Routing)
     install(CORS) {
         anyHost()
         allowHeader(HttpHeaders.ContentType)

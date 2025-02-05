@@ -1,17 +1,17 @@
 [versions]
-jetty = "9.4.55.v20240627"
+jetty = "9.4.57.v20241219"
 junit = "5.11.4"
-kotlin = "2.1.0"
-kotlinx-coroutines = "1.10.0"
+kotlin = "2.1.10"
+kotlinx-coroutines = "1.10.1"
 kotlin-logging = "3.0.5"
-ktor = "2.3.12"
-logback = "1.5.14"
-modelix-core = "11.1.2"
-modelix-mps-plugins = "0.9.3"
+ktor = "3.0.3"
+logback = "1.5.16"
+modelix-core = "11.3.0"
+modelix-mps-plugins = "0.10.1"
 
 [libraries]
-auth0-jwt = { group = "com.auth0", name = "java-jwt", version = "4.4.0" }
-commons-codec = { group = "commons-codec", name = "commons-codec", version = "1.17.1" }
+auth0-jwt = { group = "com.auth0", name = "java-jwt", version = "4.5.0" }
+commons-codec = { group = "commons-codec", name = "commons-codec", version = "1.18.0" }
 commons-io = { group = "commons-io", name = "commons-io", version = "2.18.0" }
 commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version = "3.17.0" }
 commons-text = { group = "org.apache.commons", name = "commons-text", version = "1.13.0" }
@@ -23,12 +23,12 @@ jetty-websocket-client = { group = "org.eclipse.jetty.websocket", name = "websoc
 jetty-websocket-server = { group = "org.eclipse.jetty.websocket", name = "websocket-server", version.ref = "jetty" }
 jetty-websocket-servlet = { group = "org.eclipse.jetty.websocket", name = "websocket-servlet", version.ref = "jetty" }
 jgit = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version = "7.1.0.202411261347-r" }
-json = { group = "org.json", name = "json", version = "20240303" }
+json = { group = "org.json", name = "json", version = "20250107" }
 junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junit" }
 junit-jupiter-engine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junit" }
-kaml = { group = "com.charleskorn.kaml", name = "kaml", version = "0.67.0" }
+kaml = { group = "com.charleskorn.kaml", name = "kaml", version = "0.70.0" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
-kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.3" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.8.0" }
 kotlin-logging = { group = "io.github.microutils", name = "kotlin-logging", version.ref = "kotlin-logging" }
 ktor-client-auth = { group = "io.ktor", name = "ktor-client-auth", version.ref = "ktor" }
 ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
@@ -48,7 +48,7 @@ maven-invoker = { group = "org.apache.maven.shared", name = "maven-invoker", ver
 modelix-authorization = { group = "org.modelix", name = "authorization", version.ref = "modelix-core" }
 modelix-model-client = { group = "org.modelix", name = "model-client", version.ref = "modelix-core" }
 modelix-model-server = { group = "org.modelix", name = "model-server", version.ref = "modelix-core" }
-modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.7.4"}
+modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.8.1"}
 slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version = "2.0.16" }
 zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }
 modelix-mpsPlugins-legacySync = { group = "org.modelix.mps", name = "legacy-sync-plugin", version.ref = "modelix-mps-plugins" }

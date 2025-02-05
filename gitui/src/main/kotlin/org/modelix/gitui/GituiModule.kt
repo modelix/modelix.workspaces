@@ -16,14 +16,11 @@ package org.modelix.gitui
 
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
-import io.ktor.server.plugins.cors.CORS
-import io.ktor.server.routing.Routing
+import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.routing.routing
 import java.io.File
 
 fun Application.gituiModule() {
-    install(Routing)
-
     routing {
         val gitui = gitui()
         gitui.registerGitRepository(File(".."))

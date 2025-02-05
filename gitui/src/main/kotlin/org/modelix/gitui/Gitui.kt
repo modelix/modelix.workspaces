@@ -15,15 +15,13 @@ package org.modelix.gitui
 
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.call
 import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.resources
 import io.ktor.server.http.content.static
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
-import io.ktor.util.pipeline.PipelineContext
 import kotlinx.html.a
 import kotlinx.html.body
 import kotlinx.html.button
@@ -112,7 +110,7 @@ fun Route.gitui(): Gitui {
     return gitui
 }
 
-private suspend fun PipelineContext<Unit, ApplicationCall>.repoPage(repo: GitRepository, mpsInstanceUrl: String?) {
+private suspend fun RoutingContext.repoPage(repo: GitRepository, mpsInstanceUrl: String?) {
     call.respondHtml(HttpStatusCode.OK) {
         head {
             title("Git Repository: ${repo.name}")

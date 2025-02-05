@@ -22,21 +22,21 @@ import javax.servlet.http.HttpServletResponse
 
 class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandler() {
     override fun handle(target: String, baseRequest: Request, request: HttpServletRequest, response: HttpServletResponse) {
-        val redirectedURL = DeploymentManager.INSTANCE.redirect(baseRequest, request) ?: return
+        val redirectedURL = manager.redirect(baseRequest, request) ?: return
         val personalDeploymentName = redirectedURL.instanceName ?: return
 
         // instance disabled on the management page
-        if (DeploymentManager.INSTANCE.isInstanceDisabled(personalDeploymentName)) {
+        if (manager.isInstanceDisabled(personalDeploymentName)) {
             baseRequest.isHandled = true
             response.contentType = "text/html"
             response.status = HttpServletResponse.SC_OK
-            response.writer.append("""<html><body>Instance is disabled. (<a href="/instances-manager/" target="_blank">Manage Instances</a>)</body></html>""")
+            response.writer.append("""<html><body>Instance is disabled. (<a href="/workspace-manager/instances/" target="_blank">Manage Instances</a>)</body></html>""")
             return
         }
 
         val workspace = manager.getWorkspaceForPath(redirectedURL.workspaceReference) ?: return
         var progress: Pair<Int, String> = 0 to "Waiting for start of workspace build job"
-        var statusLink = "/instances-manager/log/${personalDeploymentName.name}/"
+        var statusLink = "/workspace-manager/instances/log/${personalDeploymentName.name}/"
         var readyForForwarding = false
 
         val progressItems = WorkspaceProgressItems()
@@ -68,7 +68,7 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
 
         if (status.canStartInstance()) {
             DeploymentTimeouts.update(personalDeploymentName)
-            val deployment = DeploymentManager.INSTANCE.getDeployment(personalDeploymentName, 10)
+            val deployment = manager.getDeployment(personalDeploymentName, 10)
                 ?: throw RuntimeException("Failed creating deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
             progressItems.container.createDeployment.done = true
             val readyReplicas = deployment.status?.readyReplicas ?: 0
@@ -80,10 +80,10 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
             } else {
                 loadBuildStatus()
                 progress = 50 to "Workspace deployment created. Waiting for startup of the container."
-                if (DeploymentManager.INSTANCE.getPod(personalDeploymentName)?.status?.phase == "Running") {
+                if (manager.getPod(personalDeploymentName)?.status?.phase == "Running") {
                     progressItems.container.startContainer.started = true
                     progress = 50 to "Workspace container is running"
-                    val log = DeploymentManager.INSTANCE.getPodLogs(personalDeploymentName) ?: ""
+                    val log = manager.getPodLogs(personalDeploymentName) ?: ""
                     val string2progress: List<Pair<String, Pair<Int, String>>> = listOf(
                         "] container is starting..." to (60 to "Workspace container is running"),
                         "] starting service 'app'..." to (70 to "Preparing MPS project"),

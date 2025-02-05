@@ -114,6 +114,10 @@ import org.modelix.authorization.requiresLogin
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
+import org.modelix.instancesmanager.DeploymentManager
+import org.modelix.instancesmanager.DeploymentsProxy
+import org.modelix.instancesmanager.adminModule
+import org.modelix.model.persistent.HashUtil
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspaces.Credentials
@@ -136,7 +140,11 @@ import java.util.zip.ZipOutputStream
 fun Application.workspaceManagerModule() {
     val credentialsEncryption = createCredentialEncryption()
     val manager = WorkspaceManager(credentialsEncryption)
+    val deploymentManager = DeploymentManager(manager)
+    val deploymentsProxy = DeploymentsProxy(deploymentManager)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
+
+    deploymentsProxy.startServer()
 
     install(ModelixAuthorization) {
         permissionSchema = WorkspacesPermissionSchema.SCHEMA
@@ -150,6 +158,10 @@ fun Application.workspaceManagerModule() {
 
     routing {
         staticResources("static/", basePackage = "org.modelix.workspace.static")
+
+        route("instances") {
+            this.adminModule(deploymentManager)
+        }
 
         requiresLogin {
             get("/") {
@@ -328,7 +340,7 @@ fun Application.workspaceManagerModule() {
                             +" | "
                             a(href = "build-queue/") { +"Build Jobs" }
                             +" | "
-                            a(href = "../instances-manager/") { +"Instances" }
+                            a(href = "instances/") { +"Instances" }
                         }
                     }
                 }
@@ -424,7 +436,7 @@ fun Application.workspaceManagerModule() {
                 WorkspaceJobQueueUI(manager).install(this)
             }
 
-            route("{workspaceId}") {
+            route(Regex("(?<workspaceId>[a-z0-9]+)")) {
                 fun RoutingContext.workspaceId() = call.parameters["workspaceId"]!!
 
                 get("edit") {
@@ -577,7 +589,7 @@ fun Application.workspaceManagerModule() {
                                                             code {
                                                                 +MASKED_CREDENTIAL_VALUE
                                                             }
-                                                            +" indicates already saved user. Replace the value to set a new user."
+                                                            +" indicates an already saved user. Replace the value to set a new user."
                                                         }
                                                         li {
                                                             b { +"password" }
@@ -877,7 +889,7 @@ fun Application.workspaceManagerModule() {
                 }
             }
 
-            route("{workspaceHash}") {
+            route(Regex("(?<workspaceHash>" + HashUtil.HASH_PATTERN.pattern + ")")) {
                 intercept(ApplicationCallPipeline.Call) {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val workspace = manager.getWorkspaceForHash(workspaceHash)?.workspace

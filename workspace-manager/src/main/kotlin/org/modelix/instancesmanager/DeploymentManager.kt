@@ -14,15 +14,6 @@
 package org.modelix.instancesmanager
 
 import com.google.common.cache.CacheBuilder
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.auth.Auth
-import io.ktor.client.plugins.auth.providers.BearerTokens
-import io.ktor.client.plugins.auth.providers.bearer
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.appendPathSegments
-import io.ktor.http.takeFrom
 import io.kubernetes.client.custom.Quantity
 import io.kubernetes.client.openapi.ApiException
 import io.kubernetes.client.openapi.Configuration
@@ -42,20 +33,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
 import org.apache.commons.collections4.map.LRUMap
 import org.eclipse.jetty.server.Request
 import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.ModelixJWTUtil
+import org.modelix.authorization.permissions.AccessControlData
 import org.modelix.authorization.permissions.PermissionParts
-import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.model.server.ModelServerPermissionSchema
-import org.modelix.workspaces.Workspace
+import org.modelix.workspace.manager.WorkspaceManager
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
-import org.modelix.workspaces.WorkspacesAccessControlData
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import org.modelix.workspaces.withHash
 import java.util.Collections
@@ -70,7 +58,7 @@ import kotlin.time.Duration.Companion.seconds
 
 const val TIMEOUT_SECONDS = 10
 
-class DeploymentManager {
+class DeploymentManager(val workspaceManager: WorkspaceManager) {
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private val cleanupJob: Job
     private val managerId = java.lang.Long.toHexString(System.currentTimeMillis() / 1000)
@@ -79,26 +67,6 @@ class DeploymentManager {
     private val disabledInstances = HashSet<InstanceName>()
     private val dirty = AtomicBoolean(true)
     private val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
-    private val httpClientToManager = HttpClient(CIO) {
-        expectSuccess = true
-        install(Auth) {
-            bearer {
-                loadTokens {
-                    BearerTokens(
-                        jwtUtil.createAccessToken(
-                            "instances-manager@modelix.org",
-                            listOf(
-                                WorkspacesPermissionSchema.workspaces.readAllConfigs.fullId,
-                                PermissionSchemaBase.permissionData.read.fullId,
-                            ),
-                        ),
-                        "",
-                    )
-                }
-            }
-        }
-    }
-    private val workspaceServerUrl = System.getenv("MODELIX_WORKSPACE_SERVER") ?: "http://workspace-manager:28104/"
     private val userTokens: MutableMap<InstanceOwner, AccessTokenPrincipal> = Collections.synchronizedMap(HashMap())
     private val reconcileLock = Any()
     private val indexWasReady: MutableSet<InstanceName> = Collections.synchronizedSet(HashSet())
@@ -123,61 +91,29 @@ class DeploymentManager {
         return assignments.getOrPut(workspace.hash()) { Assignments(workspace) }
     }
 
-    private fun getAllWorkspaces(): List<Workspace> {
-        return runBlocking {
-            httpClientToManager.get {
-                url {
-                    takeFrom(workspaceServerUrl)
-                    appendPathSegments("rest", "workspaces")
-                }
-            }.bodyAsText().let { Json.decodeFromString(it) }
-        }
-    }
-
     private fun getWorkspaceByHash(hash: WorkspaceHash): WorkspaceAndHash {
-        return runBlocking {
-            httpClientToManager.get {
-                url {
-                    takeFrom(workspaceServerUrl)
-                    appendPathSegments("rest", "workspaces", "by-hash", hash.hash, "workspace.json")
-                }
-            }.bodyAsText().let { Json.decodeFromString<Workspace>(it).withHash(hash) }
+        return requireNotNull(workspaceManager.getWorkspaceForHash(hash)) {
+            "Workspace not found: $hash"
         }
     }
 
-    private fun getAccessControlData(): WorkspacesAccessControlData {
-        return runBlocking {
-            httpClientToManager.get {
-                url {
-                    takeFrom(workspaceServerUrl)
-                    appendPathSegments("rest", "access-control-data")
-                }
-            }.bodyAsText().let { Json { ignoreUnknownKeys = true }.decodeFromString(it) }
-        }
+    private fun getAccessControlData(): AccessControlData {
+        return workspaceManager.accessControlPersistence.read()
     }
 
     private val statusCache = CacheBuilder<WorkspaceHash, WorkspaceBuildStatus>.newBuilder()
         .expireAfterWrite(1, TimeUnit.SECONDS)
         .build<WorkspaceHash, WorkspaceBuildStatus>()
     fun getWorkspaceStatus(workspaceHash: WorkspaceHash): WorkspaceBuildStatus {
-        return statusCache.get(workspaceHash) {
-            runBlocking(Dispatchers.IO) {
-                val statusUrl = workspaceServerUrl + "$workspaceHash/status"
-                val statusString = httpClientToManager.get(statusUrl).bodyAsText()
-                val status = WorkspaceBuildStatus.valueOf(statusString.trim())
-                status
-            }
-        }
+        return workspaceManager.buildWorkspaceDownloadFileAsync(workspaceHash).status
     }
 
     fun getWorkspaceBuildLog(workspaceHash: WorkspaceHash): String {
-        return runBlocking(Dispatchers.IO) {
-            httpClientToManager.get("$workspaceServerUrl$workspaceHash/buildlog").bodyAsText()
-        }
+        return workspaceManager.buildWorkspaceDownloadFileAsync(workspaceHash).getLog()
     }
 
     fun getAssignments(): List<AssignmentData> {
-        val latestWorkspaces = getAllWorkspaces()
+        val latestWorkspaces = workspaceManager.getAllWorkspaces()
         var hash2workspace: Map<WorkspaceHash, WorkspaceAndHash> =
             latestWorkspaces.map { it.withHash() }.associateBy { it.hash() }
         val latestWorkspaceHashes = hash2workspace.keys.toSet()
@@ -292,7 +228,7 @@ class DeploymentManager {
     }
 
     private fun createAssignmentsForAllWorkspaces() {
-        val latestVersions = getAllWorkspaces().map { it.withHash() }.associateBy { it.id }
+        val latestVersions = workspaceManager.getAllWorkspaces().map { it.withHash() }.associateBy { it.id }
         val allExistingVersions = assignments.entries.groupBy { it.value.workspace.id }
 
         for (latestVersion in latestVersions) {
@@ -685,7 +621,6 @@ class DeploymentManager {
         val WORKSPACE_CLIENT_DEPLOYMENT_NAME = System.getenv("WORKSPACE_CLIENT_DEPLOYMENT_NAME") ?: "workspace-client"
         val WORKSPACE_PATTERN = Pattern.compile("workspace-([a-f0-9]+)-([a-zA-Z0-9\\-_\\*]+)")
         val INTERNAL_DOCKER_REGISTRY_AUTHORITY = requireNotNull(System.getenv("INTERNAL_DOCKER_REGISTRY_AUTHORITY"))
-        val INSTANCE = DeploymentManager()
     }
 }
 

@@ -42,7 +42,7 @@ ktor-server-cors = { group = "io.ktor", name = "ktor-server-cors", version.ref =
 ktor-server-html-builder = { group = "io.ktor", name = "ktor-server-html-builder", version.ref = "ktor" }
 ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktor" }
 ktor-server-status-pages = { group = "io.ktor", name = "ktor-server-status-pages", version.ref = "ktor" }
-kubernetes-client = { group = "io.kubernetes", name = "client-java", version = "22.0.0" }
+kubernetes-client = { group = "io.kubernetes", name = "client-java", version = "22.0.0-legacy" }
 logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 maven-invoker = { group = "org.apache.maven.shared", name = "maven-invoker", version = "3.3.0" }
 modelix-authorization = { group = "org.modelix", name = "authorization", version.ref = "modelix-core" }

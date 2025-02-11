@@ -970,6 +970,7 @@ fun Application.workspaceManagerModule() {
                 get("context.tar.gz") {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val workspace = manager.getWorkspaceForHash(workspaceHash)!!
+                    val httpProxy: String? = System.getenv("MODELIX_HTTP_PROXY")?.takeIf { it.isNotEmpty() }
 
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.readCredentials)
 
@@ -1033,6 +1034,13 @@ fun Application.workspaceManagerModule() {
                             #!/bin/sh
                             
                             echo "### START build-gitClone ###"
+                            
+                            ${if (httpProxy == null) "" else """
+                                export http_proxy="$httpProxy"
+                                export https_proxy="$httpProxy"
+                                export HTTP_PROXY="$httpProxy"
+                                export HTTPS_PROXY="$httpProxy"
+                            """}
                             
                             if ${
                                 workspace.gitRepositories.flatMapIndexed { index, git ->

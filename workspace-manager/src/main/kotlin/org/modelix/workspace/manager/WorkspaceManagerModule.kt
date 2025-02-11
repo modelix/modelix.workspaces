@@ -52,6 +52,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.util.encodeBase64
+import io.kubernetes.client.custom.Quantity
 import kotlinx.html.DIV
 import kotlinx.html.FlowOrInteractiveOrPhrasingContent
 import kotlinx.html.FormEncType
@@ -1233,8 +1234,11 @@ suspend fun ApplicationCall.respondTarGz(body: (TarArchiveOutputStream) -> Unit)
 
 fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: Workspace, existingWorkspaceConfig: Workspace): Workspace =
     mergeMaskedCredentialsWithPreviousCredentials(receivedWorkspaceConfig, existingWorkspaceConfig)
-        // set ID just in case the user copy-pastes a workspace and forgets to change the ID
-        .copy(id = existingWorkspaceConfig.id)
+        .copy(
+            // set ID just in case the user copy-pastes a workspace and forgets to change the ID
+            id = existingWorkspaceConfig.id,
+            memoryLimit = Quantity(receivedWorkspaceConfig.memoryLimit).toSuffixedString(),
+        )
 
 const val MASKED_CREDENTIAL_VALUE = "••••••••"
 

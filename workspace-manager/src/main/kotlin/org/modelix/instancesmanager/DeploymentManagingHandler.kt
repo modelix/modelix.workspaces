@@ -72,7 +72,7 @@ class DeploymentManagingHandler(val manager: DeploymentManager) : AbstractHandle
                 ?: throw RuntimeException("Failed creating deployment " + personalDeploymentName + " for user " + redirectedURL.userToken?.getUserName())
             progressItems.container.createDeployment.done = true
             val readyReplicas = deployment.status?.readyReplicas ?: 0
-            val waitForIndexer = request.getParameter("waitForIndexer") == "true"
+            val waitForIndexer = request.getParameter("waitForIndexer") != "false"
             val waitingForIndexer = waitForIndexer && !manager.isIndexerReady(personalDeploymentName)
             readyForForwarding = readyReplicas > 0
             if (readyForForwarding && !waitingForIndexer) {

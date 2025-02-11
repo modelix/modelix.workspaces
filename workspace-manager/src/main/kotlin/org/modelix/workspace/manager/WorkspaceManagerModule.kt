@@ -260,7 +260,7 @@ fun Application.workspaceManagerModule() {
                                             td {
                                                 if (canRead) {
                                                     a {
-                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/generator/"
+                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/generator/?waitForIndexer=true"
                                                         text("Generator")
                                                     }
                                                 }
@@ -268,7 +268,7 @@ fun Application.workspaceManagerModule() {
                                                     if (sharedInstance.allowWrite && !canWrite) continue
                                                     br {}
                                                     a {
-                                                        href = "../${workspaceInstanceUrl(workspaceAndHash, sharedInstance)}/generator/"
+                                                        href = "../${workspaceInstanceUrl(workspaceAndHash, sharedInstance)}/generator/?waitForIndexer=true"
                                                         text("Generator [${sharedInstance.name}]")
                                                     }
                                                 }
@@ -481,7 +481,7 @@ fun Application.workspaceManagerModule() {
                                     a("../../${workspaceInstanceUrl(workspaceAndHash)}/ide/?waitForIndexer=true") { +"Open MPS" }
                                 }
                                 div("menuItem") {
-                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/generator/") { +"Generator" }
+                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/generator/?waitForIndexer=true") { +"Generator" }
                                 }
                                 div("menuItem") {
                                     val resource = WorkspacesPermissionSchema.workspaces.workspace(workspaceId()).resource

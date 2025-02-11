@@ -23,17 +23,14 @@ import org.eclipse.jetty.servlet.ServletContextHandler
 import org.eclipse.jetty.servlet.ServletHolder
 import org.eclipse.jetty.websocket.api.Session
 import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest
-import java.io.IOException
 import java.net.URI
 import java.net.URISyntaxException
-import javax.servlet.ServletException
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
-object Main {
+class DeploymentsProxy(val manager: DeploymentManager) {
     private val LOG = mu.KotlinLogging.logger {}
 
-    @JvmStatic
     fun main(args: Array<String>) {
         try {
             startServer()
@@ -47,13 +44,12 @@ object Main {
         }
     }
 
-    @Throws(Exception::class)
-    private fun startServer() {
+    fun startServer() {
         val server = Server(33332)
         val handlerList = HandlerList()
         server.handler = handlerList
 
-        val deploymentManagingHandler = DeploymentManagingHandler(DeploymentManager.INSTANCE)
+        val deploymentManagingHandler = DeploymentManagingHandler(manager)
         handlerList.addHandler(deploymentManagingHandler)
         val proxyServlet: ProxyServletWithWebsocketSupport = object : ProxyServletWithWebsocketSupport() {
             override fun dataTransferred(clientSession: Session?, proxySession: Session?) {
@@ -62,7 +58,7 @@ object Main {
             }
 
             override fun redirect(request: ServletUpgradeRequest): URI? {
-                val redirectedURL = DeploymentManager.INSTANCE.redirect(null, request.httpServletRequest)
+                val redirectedURL = manager.redirect(null, request.httpServletRequest)
                 val urlToRedirectTo = redirectedURL?.getURLToRedirectTo(true)
                 return try {
                     urlToRedirectTo?.let { URI(it) }
@@ -72,15 +68,14 @@ object Main {
             }
 
             override fun rewriteTarget(clientRequest: HttpServletRequest): String? {
-                val redirectedURL = DeploymentManager.INSTANCE.redirect(null, clientRequest)
+                val redirectedURL = manager.redirect(null, clientRequest)
                 val urlToRedirectTo = redirectedURL?.getURLToRedirectTo(false)
                 return urlToRedirectTo
             }
         }
         val proxyHandlerCondition: HandlerWrapper = object : HandlerWrapper() {
-            @Throws(IOException::class, ServletException::class)
             override fun handle(target: String, baseRequest: Request, request: HttpServletRequest, response: HttpServletResponse) {
-                val redirect: RedirectedURL = DeploymentManager.INSTANCE.redirect(baseRequest, request)
+                val redirect: RedirectedURL = manager.redirect(baseRequest, request)
                     ?: return
                 if (redirect.userToken == null) {
                     baseRequest.isHandled = true
@@ -125,6 +120,6 @@ object Main {
         })
 
         // Trigger creation of the instance so that it starts the first MPS instance
-        DeploymentManager.INSTANCE.toString()
+        manager.toString()
     }
 }

@@ -57,7 +57,7 @@ import kotlin.io.path.walk
 import kotlin.time.Duration.Companion.minutes
 
 class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpClient, val serverUrl: String) {
-    private val workspaceDir = File(".").absoluteFile
+    private val workspaceDir = File(".").canonicalFile
     val progressItems = WorkspaceProgressItems()
 
     init {
@@ -159,19 +159,20 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                 }
                 usedModuleOwners += transitivePlugins.map { it.value }
 
-                val includedFolders: Set<Path> = usedModuleOwners.flatMap {
-                    when (it) {
-                        is SourceModuleOwner -> listOf(it.path.getLocalAbsolutePath().parent)
-                        is LibraryModuleOwner -> (it.getGeneratorJars() + it.getPrimaryJar() + listOfNotNull(it.getSourceJar())).map { it.toPath() }
-                        else -> listOf(it.path.getLocalAbsolutePath())
-                    }
-                }.toSet() + gitFolders.map { it.toPath() }
+                val includedFolders: Set<Path> = (
+                    usedModuleOwners.flatMap {
+                        when (it) {
+                            is SourceModuleOwner -> listOf(it.path.getLocalAbsolutePath().parent)
+                            is LibraryModuleOwner -> (it.getGeneratorJars() + it.getPrimaryJar() + listOfNotNull(it.getSourceJar())).map { it.toPath() }
+                            else -> listOf(it.path.getLocalAbsolutePath())
+                        }
+                    } + gitFolders.map { it.toPath() }
+                    ).map { it.normalize() }.toSet()
                 val usedModulesOnly: (Path) -> Boolean = { path ->
                     path.ancestorsAndSelf().any {
-                        it.name == ".mps" || includedFolders.contains(it)
+                        it.name == ".mps" || it.name == ".git" || includedFolders.contains(it.normalize())
                     }
                 }
-                usedModulesOnly
 
                 // delete all files that are not included in the filter
                 workspaceDir.toPath().walk().forEach { file ->

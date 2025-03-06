@@ -35,6 +35,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.application.install
+import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.principal
 import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.staticResources
@@ -101,14 +102,12 @@ import kotlinx.serialization.json.Json
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.io.FileUtils
-import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.ModelixAuthorization
-import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.NoPermissionException
 import org.modelix.authorization.checkPermission
+import org.modelix.authorization.getUnverifiedJwt
 import org.modelix.authorization.getUserName
 import org.modelix.authorization.hasPermission
-import org.modelix.authorization.jwt
 import org.modelix.authorization.permissions.PermissionParts
 import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.authorization.requiresLogin
@@ -415,8 +414,8 @@ fun Application.workspaceManagerModule() {
 
             post("new") {
                 call.checkPermission(WorkspacesPermissionSchema.workspaces.add)
-                val jwt = call.jwt()!!
-                val workspace = manager.newWorkspace(ModelixJWTUtil().extractUserId(jwt))
+                val jwt = call.principal<JWTPrincipal>()
+                val workspace = manager.newWorkspace(jwt?.getUserName())
                 call.respondRedirect("${workspace.id}/edit")
             }
 
@@ -976,9 +975,9 @@ fun Application.workspaceManagerModule() {
 
                     // more extensive check to ensure only the build job has access
                     if (!run {
-                            val token = call.principal<AccessTokenPrincipal>()?.jwt ?: return@run false
+                            val token = call.principal<JWTPrincipal>()?.payload ?: return@run false
                             if (!manager.jwtUtil.isAccessToken(token)) return@run false
-                            if (token.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
+                            if (call.getUnverifiedJwt()?.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
                             true
                         }
                     ) {

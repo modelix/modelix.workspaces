@@ -14,6 +14,7 @@
 package org.modelix.instancesmanager
 
 import com.google.common.cache.CacheBuilder
+import io.ktor.server.auth.jwt.JWTPrincipal
 import io.kubernetes.client.custom.Quantity
 import io.kubernetes.client.openapi.ApiException
 import io.kubernetes.client.openapi.Configuration
@@ -35,8 +36,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.apache.commons.collections4.map.LRUMap
 import org.eclipse.jetty.server.Request
-import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.ModelixJWTUtil
+import org.modelix.authorization.getUserName
 import org.modelix.authorization.permissions.AccessControlData
 import org.modelix.authorization.permissions.PermissionParts
 import org.modelix.model.server.ModelServerPermissionSchema
@@ -67,7 +68,7 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
     private val disabledInstances = HashSet<InstanceName>()
     private val dirty = AtomicBoolean(true)
     private val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
-    private val userTokens: MutableMap<InstanceOwner, AccessTokenPrincipal> = Collections.synchronizedMap(HashMap())
+    private val userTokens: MutableMap<InstanceOwner, JWTPrincipal> = Collections.synchronizedMap(HashMap())
     private val reconcileLock = Any()
     private val indexWasReady: MutableSet<InstanceName> = Collections.synchronizedSet(HashSet())
 
@@ -194,7 +195,7 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
 
     @Synchronized
     fun redirect(redirected: RedirectedURL): RedirectedURL? {
-        val userToken: AccessTokenPrincipal? = redirected.userToken
+        val userToken = redirected.userToken
         if (userToken == null) return redirected
         val userId = userToken.getUserName()
         if (userId != null) {
@@ -204,9 +205,9 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
         if (!WORKSPACE_PATTERN.matcher(workspaceReference).matches()) return null
         val workspace = getWorkspaceForPath(workspaceReference) ?: return null
 
-        val permissionEvaluator = ModelixJWTUtil().createPermissionEvaluator(userToken.jwt, WorkspacesPermissionSchema.SCHEMA)
+        val permissionEvaluator = ModelixJWTUtil().createPermissionEvaluator(userToken.payload, WorkspacesPermissionSchema.SCHEMA)
         if (userId != null) {
-            getAccessControlData().load(userToken.jwt, permissionEvaluator)
+            getAccessControlData().load(userToken.payload, permissionEvaluator)
         }
 
         val isSharedInstance = redirected.sharedInstanceName != "own"
@@ -413,7 +414,7 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
         workspace: WorkspaceAndHash,
         owner: InstanceOwner,
         instanceName: InstanceName,
-        userToken: AccessTokenPrincipal?,
+        userToken: JWTPrincipal?,
     ): Boolean {
         val originalDeploymentName = WORKSPACE_CLIENT_DEPLOYMENT_NAME
         val appsApi = AppsV1Api()
@@ -444,7 +445,7 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
             deployment.spec!!.template.spec!!.containers[0]
                 .addEnvItem(V1EnvVar().name("modelix_workspace_hash").value(workspace.hash().hash))
 
-            val originalJwt = userToken?.jwt
+            val originalJwt = userToken?.payload
             var userId: String? = null
             var hasWritePermission = false
             val newPermissions = ArrayList<PermissionParts>()
@@ -538,7 +539,7 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
         }
 
         @Synchronized
-        fun getOrCreate(userToken: AccessTokenPrincipal): InstanceName {
+        fun getOrCreate(userToken: JWTPrincipal): InstanceName {
             val userId: String = userToken.getUserName() ?: throw RuntimeException("Token doesn't contain a user ID")
             var workspaceInstanceId = owner2deployment[UserInstanceOwner(userId)]
             if (workspaceInstanceId == null) {

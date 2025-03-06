@@ -49,6 +49,7 @@ import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
+import io.ktor.server.routing.intercept
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
@@ -358,7 +359,7 @@ fun Application.workspaceManagerModule() {
             }
 
             route("{workspaceId}/git/{repoOrUploadIndex}/") {
-                intercept(ApplicationCallPipeline.Call) {
+                this.intercept(ApplicationCallPipeline.Call) {
                     val workspaceId = call.parameters["workspaceId"]!!
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.read)
                     val repoOrUploadIndex = call.parameters["repoOrUploadIndex"]!!
@@ -890,7 +891,7 @@ fun Application.workspaceManagerModule() {
             }
 
             route(Regex("(?<workspaceHash>" + HashUtil.HASH_PATTERN.pattern + ")")) {
-                intercept(ApplicationCallPipeline.Call) {
+                this.intercept(ApplicationCallPipeline.Call) {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val workspace = manager.getWorkspaceForHash(workspaceHash)?.workspace
                     if (workspace != null) {

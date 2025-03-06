@@ -22,6 +22,7 @@ dependencies {
         exclude(group = "org.jetbrains.kotlin")
         exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
         exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-jdk8")
+        exclude("org.slf4j", "slf4j-api")
     }
 
     fun implementationWithoutBundled(dependencyNotation: Provider<*>) {

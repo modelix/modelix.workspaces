@@ -44,7 +44,9 @@ dependencies {
     implementation(libs.maven.invoker)
     implementation(libs.modelix.authorization)
     implementation(libs.modelix.model.client)
-    implementation(libs.modelix.model.server)
+    implementation(libs.modelix.model.server) {
+        isTransitive = false
+    }
     implementation(libs.zt.zip)
     implementation(project(":gitui"))
     implementation(project(":workspaces"))

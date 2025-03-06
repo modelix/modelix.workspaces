@@ -987,6 +987,11 @@ fun Application.workspaceManagerModule() {
 
                     val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
                     val jwtToken = manager.workspaceJobTokenGenerator(workspace.workspace)
+
+                    val containerMemoryBytes = Quantity.fromString(workspace.memoryLimit).number
+                    var maxHeapSizeBytes = heapSizeFromContainerLimit(containerMemoryBytes)
+                    val maxHeapSizeMega = (maxHeapSizeBytes / 1024.toBigDecimal() / 1024.toBigDecimal()).toBigInteger()
+
                     call.respondTarGz { tar ->
                         @Suppress("ktlint")
                         tar.putFile("Dockerfile", """
@@ -999,7 +1004,12 @@ fun Application.workspaceManagerModule() {
                             
                             RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
                             
-                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
+                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-sync-plugin3" }
+                            
+                            RUN sed -i.bak '/-Xmx/d' /mps/bin/mps64.vmoptions \
+                                && sed -i.bak '/-XX:MaxRAMPercentage/d' /mps/bin/mps64.vmoptions \
+                                && echo "-Xmx${maxHeapSizeMega}m" >> /mps/bin/mps64.vmoptions \
+                                && cat /mps/bin/mps64.vmoptions > /mps/bin/mps.vmoptions
                             
                             COPY clone.sh /clone.sh
                             RUN chmod +x /clone.sh && chown app:app /clone.sh
@@ -1152,6 +1162,11 @@ fun Application.workspaceManagerModule() {
                     FROM ${System.getenv("MPS_BASEIMAGE_NAME")}:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
                     
                     COPY plugins /mps/plugins
+                    
+                    RUN sed -i.bak '/-Xmx/d' /mps/bin/mps64.vmoptions \
+                        && sed -i.bak '/-XX:MaxRAMPercentage/d' /mps/bin/mps64.vmoptions \
+                        && echo "-Xmx${BASE_IMAGE_MAX_HEAP_SIZE_MEGA}m" >> /mps/bin/mps64.vmoptions \
+                        && cat /mps/bin/mps64.vmoptions > /mps/bin/mps.vmoptions
                     
                     RUN /run-indexer.sh
                 """.trimIndent().toByteArray()

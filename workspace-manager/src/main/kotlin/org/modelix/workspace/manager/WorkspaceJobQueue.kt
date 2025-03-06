@@ -19,6 +19,7 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.http.HttpStatusCode
+import io.kubernetes.client.custom.Quantity
 import io.kubernetes.client.openapi.Configuration
 import io.kubernetes.client.openapi.apis.BatchV1Api
 import io.kubernetes.client.openapi.apis.CoreV1Api
@@ -194,7 +195,14 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
         fun generateJobYaml(jobName: String = kubernetesJobName): String {
             val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
 
-            val memoryLimit = workspace.memoryLimit
+            val containerMemoryBytes = Quantity.fromString(workspace.memoryLimit).number
+            val baseImageBytes = BASE_IMAGE_MAX_HEAP_SIZE_MEGA.toBigDecimal() * 1024.toBigDecimal() * 1024.toBigDecimal()
+            val heapSizeBytes = heapSizeFromContainerLimit(containerMemoryBytes).coerceAtLeast(baseImageBytes)
+            val additionalJobMemoryBytes = Quantity.fromString("1Gi").number
+            val jobContainerMemoryBytes = containerLimitFromHeapSize(heapSizeBytes.coerceAtLeast(baseImageBytes)) + additionalJobMemoryBytes
+            val jobContainerMemoryMega = (jobContainerMemoryBytes / 1024.toBigDecimal()).toBigInteger().toBigDecimal()
+            val memoryLimit = Quantity(jobContainerMemoryMega * 1024.toBigDecimal(), Quantity.Format.BINARY_SI).toSuffixedString()
+
             val jwtToken = tokenGenerator(workspace.workspace)
             val dockerConfigSecretName = System.getenv("DOCKER_CONFIG_SECRET_NAME")
             val dockerConfigInternalRegistrySecretName = System.getenv("DOCKER_CONFIG_INTERN_REGISTRY_SECRET_NAME")
@@ -297,4 +305,8 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
             return jobName.trimEnd('-')
         }
     }
+}
+
+operator fun Quantity.plus(other: Quantity): Quantity {
+    return Quantity(this.number + other.number, this.format)
 }

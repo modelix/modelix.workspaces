@@ -6,6 +6,7 @@ plugins {
 
 application {
     mainClass.set("org.modelix.workspace.job.MainKt")
+    applicationDefaultJvmArgs = listOf("-Xmx200m")
 }
 
 tasks.distTar {

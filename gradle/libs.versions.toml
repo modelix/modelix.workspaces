@@ -51,7 +51,7 @@ modelix-model-server = { group = "org.modelix", name = "model-server", version.r
 modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.8.1"}
 slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version = "2.0.17" }
 zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }
-modelix-mpsPlugins-legacySync = { group = "org.modelix.mps", name = "legacy-sync-plugin", version.ref = "modelix-mps-plugins" }
+modelix-syncPlugin3 = { group = "org.modelix.mps", name = "mps-sync-plugin3", version.ref = "modelix-core" }
 modelix-mpsPlugins-generator = { group = "org.modelix.mps", name = "generator-execution-plugin", version.ref = "modelix-mps-plugins" }
 modelix-mpsPlugins-diff = { group = "org.modelix.mps", name = "diff-plugin", version.ref = "modelix-mps-plugins" }
 
@@ -73,7 +73,7 @@ ktor-server = [
     "ktor-server-netty",
 ]
 modelix-mpsPlugins-all = [
-    "modelix-mpsPlugins-legacySync",
+    "modelix-syncPlugin3",
     "modelix-mpsPlugins-generator",
     "modelix-mpsPlugins-diff"
 ]

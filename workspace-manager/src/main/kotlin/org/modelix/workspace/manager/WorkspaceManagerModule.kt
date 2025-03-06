@@ -1152,7 +1152,7 @@ fun Application.workspaceManagerModule() {
             val pluginFiles = listOf(
                 "diff-plugin.zip",
                 "generator-execution-plugin.zip",
-                "legacy-sync-plugin.zip",
+                "mps-sync-plugin3.zip",
                 "workspace-client-plugin.zip",
             )
 

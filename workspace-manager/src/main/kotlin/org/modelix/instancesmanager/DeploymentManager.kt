@@ -438,23 +438,18 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
             deployment.spec!!.selector.putMatchLabelsItem("component", instanceName.name)
             deployment.spec!!.template.metadata!!.putLabelsItem("component", instanceName.name)
             deployment.spec!!.replicas(1)
-            deployment.spec!!.template.spec!!.containers[0]
-                .addEnvItem(V1EnvVar().name("modelix_workspace_id").value(workspace.id))
-            deployment.spec!!.template.spec!!.containers[0]
-                .addEnvItem(V1EnvVar().name("REPOSITORY_ID").value("workspace_${workspace.id}"))
-            deployment.spec!!.template.spec!!.containers[0]
-                .addEnvItem(V1EnvVar().name("modelix_workspace_hash").value(workspace.hash().hash))
+            deployment.spec!!.template.spec!!.containers[0].apply {
+                addEnvItem(V1EnvVar().name("modelix_workspace_id").value(workspace.id))
+                addEnvItem(V1EnvVar().name("REPOSITORY_ID").value("workspace_${workspace.id}"))
+                addEnvItem(V1EnvVar().name("modelix_workspace_hash").value(workspace.hash().hash))
+                addEnvItem(V1EnvVar().name("WORKSPACE_MODEL_SYNC_ENABLED").value(workspace.workspace.modelSyncEnabled.toString()))
+            }
 
             val originalJwt = userToken?.payload
             var userId: String? = null
             var hasWritePermission = false
             val newPermissions = ArrayList<PermissionParts>()
             newPermissions += WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read
-
-            // Required for the legacy-sync-plugin
-            newPermissions += ModelServerPermissionSchema.legacyUserDefinedObjects.write
-            newPermissions += ModelServerPermissionSchema.legacyGlobalObjects.add
-            newPermissions += ModelServerPermissionSchema.repository("info").write
 
             if (originalJwt == null) {
                 if (owner is SharedInstanceOwner && workspace.sharedInstances.find { it.name == owner.name }?.allowWrite == true) {

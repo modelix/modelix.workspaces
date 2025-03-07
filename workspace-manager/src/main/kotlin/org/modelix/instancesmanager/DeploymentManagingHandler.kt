@@ -15,6 +15,7 @@ package org.modelix.instancesmanager
 
 import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.handler.AbstractHandler
+import org.modelix.authorization.getUserName
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceProgressItems
 import javax.servlet.http.HttpServletRequest

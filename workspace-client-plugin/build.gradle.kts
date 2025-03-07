@@ -22,6 +22,7 @@ dependencies {
         exclude(group = "org.jetbrains.kotlin")
         exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
         exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-jdk8")
+        exclude("org.slf4j", "slf4j-api")
     }
 
     fun implementationWithoutBundled(dependencyNotation: Provider<*>) {
@@ -31,6 +32,18 @@ dependencies {
     }
 }
 
+// copy and extract sync plugin
+val syncPluginZip by configurations.creating
+dependencies {
+    syncPluginZip(libs.modelix.syncPlugin3)
+}
+val pluginDependenciesDir = layout.buildDirectory.dir("plugin-dependencies")
+sync {
+    from(zipTree({ syncPluginZip.singleFile }))
+    into(pluginDependenciesDir)
+}
+val syncPluginDir = pluginDependenciesDir.get().asFile.resolve("mps-sync-plugin3")
+
 val supportedMPSVersions = project.properties["mpsMajorVersions"].toString().split(",").sorted()
 fun String.toPlatformVersion(): String = replace(Regex("""20(\d\d)\.(\d+).*"""), "$1$2")
 
@@ -39,6 +52,7 @@ fun String.toPlatformVersion(): String = replace(Regex("""20(\d\d)\.(\d+).*"""),
 intellij {
     version = supportedMPSVersions.first()
     instrumentCode = false
+    plugins.set(listOf(syncPluginDir))
 }
 
 tasks {

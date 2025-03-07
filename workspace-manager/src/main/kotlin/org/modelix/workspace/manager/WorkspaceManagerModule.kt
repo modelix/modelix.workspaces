@@ -35,6 +35,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.application.install
+import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.principal
 import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.staticResources
@@ -48,6 +49,7 @@ import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
+import io.ktor.server.routing.intercept
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
@@ -101,14 +103,12 @@ import kotlinx.serialization.json.Json
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.io.FileUtils
-import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.ModelixAuthorization
-import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.NoPermissionException
 import org.modelix.authorization.checkPermission
+import org.modelix.authorization.getUnverifiedJwt
 import org.modelix.authorization.getUserName
 import org.modelix.authorization.hasPermission
-import org.modelix.authorization.jwt
 import org.modelix.authorization.permissions.PermissionParts
 import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.authorization.requiresLogin
@@ -359,7 +359,7 @@ fun Application.workspaceManagerModule() {
             }
 
             route("{workspaceId}/git/{repoOrUploadIndex}/") {
-                intercept(ApplicationCallPipeline.Call) {
+                this.intercept(ApplicationCallPipeline.Call) {
                     val workspaceId = call.parameters["workspaceId"]!!
                     call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.read)
                     val repoOrUploadIndex = call.parameters["repoOrUploadIndex"]!!
@@ -415,8 +415,8 @@ fun Application.workspaceManagerModule() {
 
             post("new") {
                 call.checkPermission(WorkspacesPermissionSchema.workspaces.add)
-                val jwt = call.jwt()!!
-                val workspace = manager.newWorkspace(ModelixJWTUtil().extractUserId(jwt))
+                val jwt = call.principal<JWTPrincipal>()
+                val workspace = manager.newWorkspace(jwt?.getUserName())
                 call.respondRedirect("${workspace.id}/edit")
             }
 
@@ -891,7 +891,7 @@ fun Application.workspaceManagerModule() {
             }
 
             route(Regex("(?<workspaceHash>" + HashUtil.HASH_PATTERN.pattern + ")")) {
-                intercept(ApplicationCallPipeline.Call) {
+                this.intercept(ApplicationCallPipeline.Call) {
                     val workspaceHash = WorkspaceHash(call.parameters["workspaceHash"]!!)
                     val workspace = manager.getWorkspaceForHash(workspaceHash)?.workspace
                     if (workspace != null) {
@@ -976,9 +976,9 @@ fun Application.workspaceManagerModule() {
 
                     // more extensive check to ensure only the build job has access
                     if (!run {
-                            val token = call.principal<AccessTokenPrincipal>()?.jwt ?: return@run false
+                            val token = call.principal<JWTPrincipal>()?.payload ?: return@run false
                             if (!manager.jwtUtil.isAccessToken(token)) return@run false
-                            if (token.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
+                            if (call.getUnverifiedJwt()?.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
                             true
                         }
                     ) {
@@ -987,6 +987,11 @@ fun Application.workspaceManagerModule() {
 
                     val mpsVersion = workspace.userDefinedOrDefaultMpsVersion
                     val jwtToken = manager.workspaceJobTokenGenerator(workspace.workspace)
+
+                    val containerMemoryBytes = Quantity.fromString(workspace.memoryLimit).number
+                    var maxHeapSizeBytes = heapSizeFromContainerLimit(containerMemoryBytes)
+                    val maxHeapSizeMega = (maxHeapSizeBytes / 1024.toBigDecimal() / 1024.toBigDecimal()).toBigInteger()
+
                     call.respondTarGz { tar ->
                         @Suppress("ktlint")
                         tar.putFile("Dockerfile", """
@@ -999,7 +1004,12 @@ fun Application.workspaceManagerModule() {
                             
                             RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
                             
-                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-legacy-sync-plugin" }
+                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-sync-plugin3" }
+                            
+                            RUN sed -i.bak '/-Xmx/d' /mps/bin/mps64.vmoptions \
+                                && sed -i.bak '/-XX:MaxRAMPercentage/d' /mps/bin/mps64.vmoptions \
+                                && echo "-Xmx${maxHeapSizeMega}m" >> /mps/bin/mps64.vmoptions \
+                                && cat /mps/bin/mps64.vmoptions > /mps/bin/mps.vmoptions
                             
                             COPY clone.sh /clone.sh
                             RUN chmod +x /clone.sh && chown app:app /clone.sh
@@ -1143,7 +1153,7 @@ fun Application.workspaceManagerModule() {
             val pluginFiles = listOf(
                 "diff-plugin.zip",
                 "generator-execution-plugin.zip",
-                "legacy-sync-plugin.zip",
+                "mps-sync-plugin3.zip",
                 "workspace-client-plugin.zip",
             )
 
@@ -1152,6 +1162,11 @@ fun Application.workspaceManagerModule() {
                     FROM ${System.getenv("MPS_BASEIMAGE_NAME")}:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
                     
                     COPY plugins /mps/plugins
+                    
+                    RUN sed -i.bak '/-Xmx/d' /mps/bin/mps64.vmoptions \
+                        && sed -i.bak '/-XX:MaxRAMPercentage/d' /mps/bin/mps64.vmoptions \
+                        && echo "-Xmx${BASE_IMAGE_MAX_HEAP_SIZE_MEGA}m" >> /mps/bin/mps64.vmoptions \
+                        && cat /mps/bin/mps64.vmoptions > /mps/bin/mps.vmoptions
                     
                     RUN /run-indexer.sh
                 """.trimIndent().toByteArray()

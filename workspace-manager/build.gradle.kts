@@ -44,13 +44,13 @@ dependencies {
     implementation(libs.maven.invoker)
     implementation(libs.modelix.authorization)
     implementation(libs.modelix.model.client)
-    implementation(libs.modelix.model.server)
+    implementation(libs.modelix.model.server) {
+        isTransitive = false
+    }
     implementation(libs.zt.zip)
     implementation(project(":gitui"))
     implementation(project(":workspaces"))
-    mpsPlugins(libs.modelix.mpsPlugins.diff)
-    mpsPlugins(libs.modelix.mpsPlugins.generator)
-    mpsPlugins(libs.modelix.mpsPlugins.legacySync)
+    mpsPlugins(libs.bundles.modelix.mpsPlugins.all)
     mpsPlugins(project(":workspace-client-plugin", configuration = "archives"))
     runtimeOnly(libs.slf4j.simple)
     testImplementation(kotlin("test"))

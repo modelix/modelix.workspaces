@@ -14,8 +14,8 @@
 package org.modelix.instancesmanager
 
 import com.auth0.jwt.JWT
+import io.ktor.server.auth.jwt.JWTPrincipal
 import org.eclipse.jetty.server.Request
-import org.modelix.authorization.AccessTokenPrincipal
 import org.modelix.authorization.nullIfInvalid
 import javax.servlet.http.HttpServletRequest
 
@@ -24,7 +24,7 @@ class RedirectedURL(
     val workspaceReference: String,
     val sharedInstanceName: String,
     var instanceName: InstanceName?,
-    val userToken: AccessTokenPrincipal?,
+    val userToken: JWTPrincipal?,
 ) {
 
     fun getURLToRedirectTo(websocket: Boolean): String? {
@@ -70,8 +70,8 @@ class RedirectedURL(
             return RedirectedURL("/" + remainingPath, workspaceReference, sharedInstanceName, null, userId)
         }
 
-        fun getUserIdFromAuthHeader(request: HttpServletRequest): AccessTokenPrincipal? {
-            val tokenString = request.getHeader("X-Forwarded-Access-Token") ?: run {
+        fun getUserIdFromAuthHeader(request: HttpServletRequest): JWTPrincipal? {
+            val tokenString = run {
                 val headerValue: String? = request.getHeader("Authorization")
                 val prefix = "Bearer "
                 if (headerValue?.startsWith(prefix) == true) {
@@ -80,7 +80,7 @@ class RedirectedURL(
                     null
                 }
             } ?: return null
-            return JWT.decode(tokenString).nullIfInvalid()?.let { AccessTokenPrincipal(it) }
+            return JWT.decode(tokenString).nullIfInvalid()?.let { JWTPrincipal(it) }
         }
     }
 }

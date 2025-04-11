@@ -14,7 +14,7 @@ auth0-jwt = { group = "com.auth0", name = "java-jwt", version = "4.5.0" }
 commons-codec = { group = "commons-codec", name = "commons-codec", version = "1.18.0" }
 commons-io = { group = "commons-io", name = "commons-io", version = "2.19.0" }
 commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version = "3.17.0" }
-commons-text = { group = "org.apache.commons", name = "commons-text", version = "1.13.0" }
+commons-text = { group = "org.apache.commons", name = "commons-text", version = "1.13.1" }
 jasypt = { group = "org.jasypt", name = "jasypt", version = "1.9.3" }
 jetty-proxy = { group = "org.eclipse.jetty", name = "jetty-proxy", version.ref = "jetty" }
 jetty-server = { group = "org.eclipse.jetty", name = "jetty-server", version.ref = "jetty" }

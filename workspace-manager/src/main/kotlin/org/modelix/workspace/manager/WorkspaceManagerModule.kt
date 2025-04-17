@@ -1073,8 +1073,9 @@ fun Application.workspaceManagerModule() {
                                     
                                     listOf(
                                         "mkdir -p $dir",
-                                        "git$authHeader clone ${git.url} $dir",
                                         "cd $dir",
+                                        "git$authHeader clone ${git.url}",
+                                        "cd *",
                                         "git checkout " + (git.commitHash ?: ("origin/" + git.branch)),
                                     )
                                 }.joinToString(" && ")

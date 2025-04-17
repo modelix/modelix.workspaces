@@ -315,6 +315,14 @@ fun Application.workspaceManagerModule() {
                                                         }
                                                     }
                                                 }
+                                                if (workspace.gitRepositories.isNotEmpty()) {
+                                                    postForm("./api/workspaces/$workspaceId/git-import/trigger") {
+                                                        style = "display: inline-block"
+                                                        submitInput(classes = "btn") {
+                                                            value = "Git Import"
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1140,6 +1148,35 @@ fun Application.workspaceManagerModule() {
                                 // TODO MODELIX-1057 Credentials can be exposed here.
                                 // The "rest" endpoints are to be removed after merging workspace- and instance-manager
                                 call.respondText(Json.encodeToString(workspace), ContentType.Application.Json)
+                            }
+                        }
+                    }
+                }
+            }
+
+            route("api") {
+                route("workspaces") {
+                    route("{workspaceId}") {
+                        route("git-import") {
+                            post("trigger") {
+                                val workspaceId = call.parameters["workspaceId"]!!
+                                call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceId).modelRepository.write)
+                                val executionIds = manager.enqueueGitImport(workspaceId)
+                                call.respondHtml {
+                                    body {
+                                        div {
+                                            +"Import job added"
+                                        }
+                                        br {}
+                                        for (executionId in executionIds) {
+                                            div {
+                                                a(href = "../../../../../ui/executions/modelix/git_import/$executionId/gantt") {
+                                                    +"Show Progress ($executionId)"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

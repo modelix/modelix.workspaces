@@ -1012,8 +1012,6 @@ fun Application.workspaceManagerModule() {
                             
                             RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
                             
-                            ${ if (workspace.workspace.modelSyncEnabled) "" else "RUN rm -rf /mps/plugins/mps-sync-plugin3" }
-                            
                             RUN sed -i.bak '/-Xmx/d' /mps/bin/mps64.vmoptions \
                                 && sed -i.bak '/-XX:MaxRAMPercentage/d' /mps/bin/mps64.vmoptions \
                                 && echo "-Xmx${maxHeapSizeMega}m" >> /mps/bin/mps64.vmoptions \

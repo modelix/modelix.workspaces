@@ -9,7 +9,7 @@ import org.modelix.mps.sync3.IModelSyncService
 
 private val LOG = KotlinLogging.logger { }
 
-class WorkspaceClientStartupActivity : StartupActivity.Background {
+class WorkspaceClientStartupActivity : StartupActivity {
     override fun runActivity(project: Project) {
         println("### Workspace client loaded for project: ${project.name}")
         DumbService.getInstance(project).smartInvokeLater {

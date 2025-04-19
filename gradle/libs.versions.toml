@@ -1,20 +1,20 @@
 [versions]
 jetty = "9.4.57.v20241219"
-junit = "5.12.0"
-kotlin = "2.1.10"
-kotlinx-coroutines = "1.10.1"
+junit = "5.12.2"
+kotlin = "2.1.20"
+kotlinx-coroutines = "1.10.2"
 kotlin-logging = "3.0.5"
-ktor = "3.1.1"
-logback = "1.5.16"
-modelix-core = "11.3.0"
+ktor = "3.1.2"
+logback = "1.5.18"
+modelix-core = "14.4.3"
 modelix-mps-plugins = "0.11.1"
 
 [libraries]
 auth0-jwt = { group = "com.auth0", name = "java-jwt", version = "4.5.0" }
 commons-codec = { group = "commons-codec", name = "commons-codec", version = "1.18.0" }
-commons-io = { group = "commons-io", name = "commons-io", version = "2.18.0" }
+commons-io = { group = "commons-io", name = "commons-io", version = "2.19.0" }
 commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version = "3.17.0" }
-commons-text = { group = "org.apache.commons", name = "commons-text", version = "1.13.0" }
+commons-text = { group = "org.apache.commons", name = "commons-text", version = "1.13.1" }
 jasypt = { group = "org.jasypt", name = "jasypt", version = "1.9.3" }
 jetty-proxy = { group = "org.eclipse.jetty", name = "jetty-proxy", version.ref = "jetty" }
 jetty-server = { group = "org.eclipse.jetty", name = "jetty-server", version.ref = "jetty" }
@@ -22,13 +22,13 @@ jetty-servlet = { group = "org.eclipse.jetty", name = "jetty-servlet", version.r
 jetty-websocket-client = { group = "org.eclipse.jetty.websocket", name = "websocket-client", version.ref = "jetty" }
 jetty-websocket-server = { group = "org.eclipse.jetty.websocket", name = "websocket-server", version.ref = "jetty" }
 jetty-websocket-servlet = { group = "org.eclipse.jetty.websocket", name = "websocket-servlet", version.ref = "jetty" }
-jgit = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version = "7.1.0.202411261347-r" }
+jgit = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version = "7.2.0.202503040940-r" }
 json = { group = "org.json", name = "json", version = "20250107" }
 junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junit" }
 junit-jupiter-engine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junit" }
-kaml = { group = "com.charleskorn.kaml", name = "kaml", version = "0.72.0" }
+kaml = { group = "com.charleskorn.kaml", name = "kaml", version = "0.77.0" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
-kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.8.0" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.8.1" }
 kotlin-logging = { group = "io.github.microutils", name = "kotlin-logging", version.ref = "kotlin-logging" }
 ktor-client-auth = { group = "io.ktor", name = "ktor-client-auth", version.ref = "ktor" }
 ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
@@ -48,10 +48,10 @@ maven-invoker = { group = "org.apache.maven.shared", name = "maven-invoker", ver
 modelix-authorization = { group = "org.modelix", name = "authorization", version.ref = "modelix-core" }
 modelix-model-client = { group = "org.modelix", name = "model-client", version.ref = "modelix-core" }
 modelix-model-server = { group = "org.modelix", name = "model-server", version.ref = "modelix-core" }
-modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.8.1"}
+modelix-mps-build-tools = { group = "org.modelix.mps", name="build-tools-lib", version = "1.9.0"}
 slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version = "2.0.17" }
 zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }
-modelix-mpsPlugins-legacySync = { group = "org.modelix.mps", name = "legacy-sync-plugin", version.ref = "modelix-mps-plugins" }
+modelix-syncPlugin3 = { group = "org.modelix.mps", name = "mps-sync-plugin3", version.ref = "modelix-core" }
 modelix-mpsPlugins-generator = { group = "org.modelix.mps", name = "generator-execution-plugin", version.ref = "modelix-mps-plugins" }
 modelix-mpsPlugins-diff = { group = "org.modelix.mps", name = "diff-plugin", version.ref = "modelix-mps-plugins" }
 
@@ -73,14 +73,14 @@ ktor-server = [
     "ktor-server-netty",
 ]
 modelix-mpsPlugins-all = [
-    "modelix-mpsPlugins-legacySync",
+    "modelix-syncPlugin3",
     "modelix-mpsPlugins-generator",
     "modelix-mpsPlugins-diff"
 ]
 
 
 [plugins]
-gitVersion = { id = "com.palantir.git-version", version = "3.1.0" }
+gitVersion = { id = "com.palantir.git-version", version = "3.2.0" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 shadow = { id = "com.github.johnrengelman.shadow", version = "8.1.1" }

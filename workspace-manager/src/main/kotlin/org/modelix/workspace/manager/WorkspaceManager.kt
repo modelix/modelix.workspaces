@@ -13,9 +13,34 @@
  */
 package org.modelix.workspace.manager
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.expectSuccess
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.appendPathSegments
+import io.ktor.http.content.TextContent
+import io.ktor.http.parameters
+import io.ktor.http.takeFrom
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.util.url
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.permissions.FileSystemAccessControlPersistence
+import org.modelix.model.lazy.RepositoryId
 import org.modelix.model.persistent.SerializationUtil
+import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.workspaces.ModelServerWorkspacePersistence
 import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.Workspace
@@ -49,6 +74,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         )
     }
     val buildJobs = WorkspaceJobQueue(tokenGenerator = workspaceJobTokenGenerator)
+    val kestraClient = KestraClient(jwtUtil)
 
     init {
         println("workspaces directory: $directory")
@@ -134,4 +160,177 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         return newWorkspace
     }
     fun removeWorkspace(workspaceId: String) = workspacePersistence.removeWorkspace(workspaceId)
+
+    suspend fun enqueueGitImport(workspaceId: String): List<String> {
+        kestraClient.updateGitImportFlow()
+        val workspace = requireNotNull(getWorkspaceForId(workspaceId)) { "Workspace not found: $workspaceId" }
+        val existingExecutions = kestraClient.getRunningImportJobIds(workspaceId)
+        if (existingExecutions.isNotEmpty()) {
+            return existingExecutions
+        }
+        return kestraClient.enqueueGitImport(credentialsEncryption.copyWithDecryptedCredentials(workspace.workspace))["id"]!!.jsonPrimitive.content.let { listOf(it) }
+    }
+}
+
+class KestraClient(val jwtUtil: ModelixJWTUtil) {
+    private val kestraApiEndpoint = url {
+        takeFrom(System.getenv("KESTRA_URL"))
+        appendPathSegments("api", "v1")
+    }
+
+    private val httpClient = HttpClient(CIO) {
+        expectSuccess = true
+        install(ContentNegotiation) {
+            json()
+        }
+    }
+
+    suspend fun getRunningImportJobIds(workspaceId: String): List<String> {
+        val responseObject: JsonObject = httpClient.get {
+            url {
+                takeFrom(kestraApiEndpoint)
+                appendPathSegments("executions", "search")
+                parameters.append("namespace", "modelix")
+                parameters.append("flowId", "git_import")
+                parameters.append("labels", "workspace:$workspaceId")
+                parameters.append("state", "CREATED")
+                parameters.append("state", "QUEUED")
+                parameters.append("state", "RUNNING")
+                parameters.append("state", "RETRYING")
+                parameters.append("state", "PAUSED")
+                parameters.append("state", "RESTARTED")
+                parameters.append("state", "KILLING")
+            }
+        }.body()
+
+        return responseObject["results"]!!.jsonArray.map { it.jsonObject["id"]!!.jsonPrimitive.content }
+    }
+
+    suspend fun enqueueGitImport(workspace: Workspace): JsonObject {
+        val gitRepo = workspace.gitRepositories.first()
+
+        updateGitImportFlow()
+
+        val targetBranch = RepositoryId("workspace_${workspace.id}").getBranchReference("git-import")
+        val token = jwtUtil.createAccessToken(
+            "git-import@modelix.org",
+            listOf(
+                ModelServerPermissionSchema.repository(targetBranch.repositoryId).create.fullId,
+                ModelServerPermissionSchema.branch(targetBranch).rewrite.fullId,
+            ),
+        )
+
+        val response = httpClient.post {
+            url {
+                takeFrom(kestraApiEndpoint)
+                appendPathSegments("executions", "modelix", "git_import")
+                parameters["labels"] = "workspace:${workspace.id}"
+            }
+            setBody(
+                MultiPartFormDataContent(
+                    formData {
+                        append("git_url", gitRepo.url)
+                        append("git_revision", "origin/${gitRepo.branch}")
+                        append("modelix_repo_name", "workspace_${workspace.id}")
+                        append("modelix_target_branch", "git-import")
+                        append("token", token)
+                        gitRepo.credentials?.also { credentials ->
+                            append("git_user", credentials.user)
+                            append("git_pw", credentials.password)
+                        }
+                    },
+                ),
+            )
+        }
+
+        return response.body()
+    }
+
+    suspend fun updateGitImportFlow() {
+        // language=yaml
+        val content = TextContent(
+            """
+                id: git_import
+                namespace: modelix
+                
+                inputs:
+                  - id: git_url
+                    type: URI
+                    required: true
+                    defaults: https://github.com/coolya/Durchblick.git
+                  - id: git_revision
+                    type: STRING
+                    defaults: HEAD
+                  - id: modelix_repo_name
+                    type: STRING
+                    required: true
+                  - id: modelix_target_branch
+                    type: STRING
+                    required: true
+                    defaults: git-import
+                  - id: token
+                    type: SECRET
+                    required: true
+                  - type: SECRET
+                    id: git_pw
+                    required: false
+                  - type: SECRET
+                    id: git_user
+                    required: false
+                  - id: git_limit
+                    type: INT
+                    defaults: 200
+                
+                tasks:
+                  - id: clone_and_import
+                    type: io.kestra.plugin.core.flow.WorkingDirectory
+                    tasks:
+                      - id: clone_repo
+                        type: "io.kestra.plugin.core.templating.TemplatedTask"
+                        spec: |
+                          type: io.kestra.plugin.git.Clone
+                          url: "{{ inputs.git_url }}"
+                          directory: git_repo
+                          depth: {{ inputs.git_limit }}
+                          username: "{{ inputs.git_user }}"
+                          password: "{{ inputs.git_pw }}"
+                      - id: run_import
+                        type: io.kestra.plugin.docker.Run
+                        containerImage: ${System.getenv("GIT_IMPORT_IMAGE")}
+                        pullPolicy: IF_NOT_PRESENT
+                        commands:
+                          - git-import
+                          - "{{ outputs.clone_repo.directory }}"
+                          - --model-server
+                          - "${System.getenv("model_server_url")}"
+                          - --token
+                          - "{{ inputs.token }}"
+                          - --repository
+                          - "{{ inputs.modelix_repo_name }}"
+                          - --branch
+                          - "{{ inputs.modelix_target_branch }}"
+                          - --rev
+                          - "{{ inputs.git_revision }}"
+            """.trimIndent(),
+            ContentType("application", "x-yaml"),
+        )
+
+        val response = httpClient.put {
+            expectSuccess = false
+            url {
+                takeFrom(kestraApiEndpoint)
+                appendPathSegments("flows", "modelix", "git_import")
+            }
+            setBody(content)
+        }
+        if (response.status == HttpStatusCode.NotFound) {
+            httpClient.post {
+                url {
+                    takeFrom(kestraApiEndpoint)
+                    appendPathSegments("flows")
+                }
+                setBody(content)
+            }
+        }
+    }
 }

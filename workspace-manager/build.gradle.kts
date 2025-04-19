@@ -2,13 +2,9 @@
 description = "Allows multiple clients to work on the same set of modules from different sources"
 
 plugins {
-    application
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
-}
-
-application {
-    mainClass.set("io.ktor.server.netty.EngineMain")
+    alias(libs.plugins.jib)
 }
 
 val mpsPlugins by configurations.registering
@@ -59,19 +55,15 @@ dependencies {
     testRuntimeOnly(libs.junit.jupiter.engine)
 }
 
-tasks.getByName<Test>("test") {
+tasks.test {
     useJUnitPlatform()
-}
-
-tasks.named("assemble") {
-    dependsOn("installDist")
 }
 
 val copyClient = tasks.register("copyClient", Sync::class.java) {
     dependsOn(project(":workspace-job").tasks.named("distTar"))
     dependsOn(":workspace-client-plugin:buildPlugin")
 
-    from(project(":workspace-job").tasks.distTar.map { it.archiveFile })
+    from(project(":workspace-job").tasks.named<Tar>("distTar").map { it.archiveFile })
     from(mpsPlugins)
     into(project.layout.buildDirectory.dir("client/org/modelix/workspace/static"))
     rename { fileName ->
@@ -91,5 +83,30 @@ sourceSets {
         resources {
             srcDir(project.layout.buildDirectory.dir("client"))
         }
+    }
+}
+
+jib {
+    from {
+        platforms {
+            platform {
+                architecture = "arm64"
+                os = "linux"
+            }
+            platform {
+                architecture = "amd64"
+                os = "linux"
+            }
+        }
+    }
+    to {
+        image = "modelix/modelix-workspace-manager"
+    }
+    container {
+        ports = listOf("28104")
+        jvmFlags = listOf(
+            "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5071",
+            "-XX:MaxRAMPercentage=75",
+        )
     }
 }

@@ -1,0 +1,14 @@
+# To learn more about the skaffold.yaml schema visit
+# https://skaffold.dev/docs/references/yaml/
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: workspaces
+build:
+  local: {}
+  artifacts:
+    - image: modelix/modelix-workspace-manager
+      jib:
+        project: workspace-manager
+    - image: modelix/modelix-workspace-job
+      context: workspace-job

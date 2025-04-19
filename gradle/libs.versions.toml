@@ -84,3 +84,4 @@ gitVersion = { id = "com.palantir.git-version", version = "3.2.0" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 shadow = { id = "com.github.johnrengelman.shadow", version = "8.1.1" }
+jib = { id = "com.google.cloud.tools.jib", version = "3.4.5" }

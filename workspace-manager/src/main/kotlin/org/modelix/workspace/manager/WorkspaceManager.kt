@@ -24,11 +24,11 @@ import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.appendPathSegments
 import io.ktor.http.content.TextContent
-import io.ktor.http.parameters
 import io.ktor.http.takeFrom
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.util.url
@@ -283,24 +283,21 @@ class KestraClient(val jwtUtil: ModelixJWTUtil) {
                 
                 tasks:
                   - id: clone_and_import
-                    type: io.kestra.plugin.core.flow.WorkingDirectory
-                    tasks:
-                      - id: clone_repo
-                        type: "io.kestra.plugin.core.templating.TemplatedTask"
-                        spec: |
-                          type: io.kestra.plugin.git.Clone
-                          url: "{{ inputs.git_url }}"
-                          directory: git_repo
-                          depth: {{ inputs.git_limit }}
-                          username: "{{ inputs.git_user }}"
-                          password: "{{ inputs.git_pw }}"
-                      - id: run_import
-                        type: io.kestra.plugin.docker.Run
-                        containerImage: ${System.getenv("GIT_IMPORT_IMAGE")}
-                        pullPolicy: IF_NOT_PRESENT
-                        commands:
-                          - git-import
-                          - "{{ outputs.clone_repo.directory }}"
+                    type: io.kestra.plugin.kubernetes.PodCreate
+                    namespace: ${System.getenv("KUBERNETES_NAMESPACE")}
+                    spec:
+                      containers:
+                      - name: importer
+                        image: ${System.getenv("GIT_IMPORT_IMAGE")}
+                        args:
+                          - git-import-remote
+                          - "{{ inputs.git_url }}"
+                          - --git-user
+                          - "{{ inputs.git_user }}"
+                          - --git-password
+                          - "{{ inputs.git_pw }}"
+                          - --limit
+                          - "{{ inputs.git_limit }}"
                           - --model-server
                           - "${System.getenv("model_server_url")}"
                           - --token
@@ -311,6 +308,7 @@ class KestraClient(val jwtUtil: ModelixJWTUtil) {
                           - "{{ inputs.modelix_target_branch }}"
                           - --rev
                           - "{{ inputs.git_revision }}"
+                      restartPolicy: Never
             """.trimIndent(),
             ContentType("application", "x-yaml"),
         )
@@ -323,13 +321,19 @@ class KestraClient(val jwtUtil: ModelixJWTUtil) {
             }
             setBody(content)
         }
-        if (response.status == HttpStatusCode.NotFound) {
-            httpClient.post {
-                url {
-                    takeFrom(kestraApiEndpoint)
-                    appendPathSegments("flows")
+        when (response.status) {
+            HttpStatusCode.OK -> {}
+            HttpStatusCode.NotFound -> {
+                httpClient.post {
+                    url {
+                        takeFrom(kestraApiEndpoint)
+                        appendPathSegments("flows")
+                    }
+                    setBody(content)
                 }
-                setBody(content)
+            }
+            else -> {
+                throw RuntimeException("${response.status}\n\n${response.bodyAsText()}\n\n${content.text}")
             }
         }
     }

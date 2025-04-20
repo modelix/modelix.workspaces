@@ -7,7 +7,9 @@ plugins {
     alias(libs.plugins.jib)
 }
 
-val mpsPlugins by configurations.registering
+val mpsPlugins by configurations.registering {
+    attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.ZIP_TYPE)
+}
 
 dependencies {
     implementation(libs.auth0.jwt)

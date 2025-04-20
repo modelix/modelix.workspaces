@@ -1,5 +1,12 @@
 
 buildscript {
+    // Make sure the sync plugin is built before the script is evaluated,
+    // because the IntelliJ Gradle plugin expects that.
+    val syncPluginZip by configurations.creating {
+        attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.ZIP_TYPE)
+    }
+    dependencies { syncPluginZip(libs.modelix.syncPlugin3) }
+
     dependencies {
         classpath(libs.modelix.mps.build.tools)
     }
@@ -33,7 +40,11 @@ dependencies {
 }
 
 // copy and extract sync plugin
-val syncPluginZip by configurations.creating
+val syncPluginZip by configurations.creating {
+    attributes {
+        attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.ZIP_TYPE)
+    }
+}
 dependencies {
     syncPluginZip(libs.modelix.syncPlugin3)
 }

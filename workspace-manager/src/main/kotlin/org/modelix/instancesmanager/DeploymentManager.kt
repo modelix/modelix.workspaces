@@ -47,6 +47,7 @@ import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import org.modelix.workspaces.withHash
+import java.io.File
 import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -422,9 +423,7 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
         val deploymentExists =
             deployments.items.stream().anyMatch { d: V1Deployment -> instanceName.name == d.metadata!!.name }
         if (!deploymentExists) {
-//            long numExisting = deployments.getItems().stream().filter(d -> d.getMetadata().getName().startsWith(personalDeploymentPrefix)).count();
-//            if (numExisting > 10) throw new RuntimeException("Too many existing deployments");
-            val deployment = appsApi.readNamespacedDeployment(originalDeploymentName, KUBERNETES_NAMESPACE).execute()
+            val deployment = Yaml.loadAs(File("/workspace-client-templates/deployment"), V1Deployment::class.java)
             deployment.metadata!!.creationTimestamp(null)
             deployment.metadata!!.managedFields = null
             deployment.metadata!!.uid = null
@@ -476,7 +475,7 @@ class DeploymentManager(val workspaceManager: WorkspaceManager) {
         val services = coreApi.listNamespacedService(KUBERNETES_NAMESPACE).timeoutSeconds(TIMEOUT_SECONDS).execute()
         val serviceExists = services.items.stream().anyMatch { s: V1Service -> instanceName.name == s.metadata!!.name }
         if (!serviceExists) {
-            val service = coreApi.readNamespacedService(originalDeploymentName, KUBERNETES_NAMESPACE).execute()
+            val service = Yaml.loadAs(File("/workspace-client-templates/service"), V1Service::class.java)
             service.metadata!!.putAnnotationsItem("kubectl.kubernetes.io/last-applied-configuration", null)
             service.metadata!!.managedFields = null
             service.metadata!!.uid = null

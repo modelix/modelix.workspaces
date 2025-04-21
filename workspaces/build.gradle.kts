@@ -3,6 +3,10 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+kotlin {
+    jvmToolchain(11) // must be compatible to workspace-job
+}
+
 dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kaml)

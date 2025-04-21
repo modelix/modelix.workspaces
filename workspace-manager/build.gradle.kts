@@ -89,26 +89,7 @@ sourceSets {
 }
 
 jib {
-    from {
-        platforms {
-            platform {
-                architecture = "arm64"
-                os = "linux"
-            }
-            platform {
-                architecture = "amd64"
-                os = "linux"
-            }
-        }
-    }
-    to {
-        image = "modelix/modelix-workspace-manager"
-    }
     container {
         ports = listOf("28104")
-        jvmFlags = listOf(
-            "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5071",
-            "-XX:MaxRAMPercentage=75",
-        )
     }
 }

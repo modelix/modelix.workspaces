@@ -7,8 +7,8 @@ metadata:
 build:
   local: {}
   artifacts:
-    - image: modelix/modelix-workspace-manager
+    - image: modelix-workspace-manager
       jib:
         project: workspace-manager
-    - image: modelix/modelix-workspace-job
+    - image: modelix-workspace-job
       context: workspace-job

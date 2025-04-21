@@ -15,13 +15,13 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 11
+          java-version: 21
+
+      - name: Use tag as version
+        run: echo "${GITHUB_REF#refs/*/}" > version.txt
 
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
-
-      - name: Execute Gradle build
-        run: ./gradlew build
 
       # Add support for more platforms with QEMU (optional)
       # https://github.com/docker/setup-qemu-action
@@ -39,5 +39,11 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USER }}
           password: ${{ secrets.DOCKER_HUB_KEY }}
 
-      - name: Build and Publish Docker
-        run: ./docker-build-local-and-publish-on-ci-all.sh
+      - name: Install Skaffold
+        uses: yokawasa/action-setup-kube-tools@v0.11.2
+        with:
+          setup-tools: |
+            skaffold
+          skaffold: 2.15.0
+      - name: Build and Push Images
+        run: skaffold build --push --default-repo='modelix' --tag='${GITHUB_REF#refs/*/}'

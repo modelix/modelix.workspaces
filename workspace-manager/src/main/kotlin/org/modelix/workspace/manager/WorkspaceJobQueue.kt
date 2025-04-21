@@ -160,11 +160,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
     companion object {
         private val LOG = mu.KotlinLogging.logger { }
         val KUBERNETES_NAMESPACE = System.getenv("KUBERNETES_NAMESPACE") ?: "default"
-        val IMAGE_NAME = System.getenv("WORKSPACE_JOB_IMAGE_NAME") ?: "modelix/workspace-job"
-
-        // XXX The name WORKSPACE_JOB_IMAGE_VERSION is misleading as it is only the prefix.
-        // e.g. `latest` becomes `latest-2020.3`
-        val IMAGE_VERSION = System.getenv("WORKSPACE_JOB_IMAGE_VERSION") ?: "latest"
+        val JOB_IMAGE = System.getenv("WORKSPACE_JOB_IMAGE")
         val HELM_PREFIX = System.getenv("KUBERNETES_PREFIX") ?: ""
         val JOB_PREFIX = HELM_PREFIX + "wsjob-"
     }
@@ -224,7 +220,7 @@ class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
                         effect: "NoExecute"
                       containers:
                       - name: wsjob
-                        image: $IMAGE_NAME:$IMAGE_VERSION
+                        image: $JOB_IMAGE
                         env:
                         - name: TARGET_REGISTRY
                           value: ${HELM_PREFIX}docker-registry:5000

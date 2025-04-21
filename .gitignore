@@ -101,7 +101,7 @@ gradle-app.setting
 .classpath
 
 # Ignore our version file
-/workspaces-version.txt
+/version.txt
 
 
 /node_modules/

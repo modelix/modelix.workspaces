@@ -8,7 +8,7 @@ version = computeVersion()
 description = "Components to run MPS in the cloud with Kubernetes"
 
 fun computeVersion(): Any {
-    val versionFile = file("workspaces-version.txt")
+    val versionFile = file("version.txt")
     return if (versionFile.exists()) {
         versionFile.readText().trim()
     } else {

@@ -33,7 +33,7 @@ Developing and testing and testing it locally is currently tightly coupled with 
    ./docker-build-local-and-publish-on-ci-all.sh
    ```
 4. To run the locally built images, follow the instructions in [Helm chart for Modelix Workspaces](https://github.com/modelix/modelix.kubernetes?tab=readme-ov-file#making-changes-to-modelix-workspace-components).  
-   You can see the version of the local images in their label or the [workspaces-version.txt](workspaces-version.txt).
+   You can see the version of the local images in their label or the [version.txt](version.txt).
 
 ## Publishing
 

@@ -6,9 +6,10 @@ metadata:
   name: workspaces
 build:
   local: {}
+  platforms: ["linux/amd64", "linux/arm64"]
   artifacts:
-    - image: modelix/modelix-workspace-manager
+    - image: modelix-workspace-manager
       jib:
         project: workspace-manager
-    - image: modelix/modelix-workspace-job
+    - image: modelix-workspace-job
       context: workspace-job

@@ -42,6 +42,7 @@ dependencies {
     implementation(libs.logback.classic)
     implementation(libs.maven.invoker)
     implementation(libs.modelix.authorization)
+    implementation(libs.ktor.server.call.logging)
     implementation(libs.modelix.model.client)
     implementation(libs.modelix.model.server) {
         isTransitive = false

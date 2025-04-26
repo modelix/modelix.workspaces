@@ -22,7 +22,6 @@ import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.forms.submitForm
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
@@ -41,6 +40,9 @@ import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.origin
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respond
@@ -1235,11 +1237,11 @@ fun Application.workspaceManagerModule() {
 
     install(CORS) {
         anyHost()
+        anyMethod()
+        allowOrigins { true }
         allowHeader(HttpHeaders.ContentType)
-        allowMethod(HttpMethod.Options)
-        allowMethod(HttpMethod.Get)
-        allowMethod(HttpMethod.Put)
-        allowMethod(HttpMethod.Post)
+        allowHeader(HttpHeaders.AccessControlAllowOrigin)
+        allowHeader(HttpHeaders.Authorization)
     }
 }
 

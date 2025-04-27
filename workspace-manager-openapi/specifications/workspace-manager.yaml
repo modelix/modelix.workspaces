@@ -1,0 +1,120 @@
+openapi: "3.0.3"
+info:
+  title: "Modelix Workspaces"
+  version: "1.0.0"
+servers:
+  - url: '/modelix/workspaces'
+    description: modelix-workspaces-manager
+paths:
+  /connectivity/maven/:
+    get:
+      operationId: getMavenConnectorConfig
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MavenConnectorConfig'
+  /connectivity/maven/repositories/:
+    get:
+      operationId: listMavenRepositories
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MavenRepositoryList'
+  /connectivity/maven/repositories/{repositoryId}:
+    get:
+      operationId: getMavenRepository
+      parameters:
+        - name: repositoryId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MavenRepository'
+  /connectivity/maven/artifacts/:
+    get:
+      operationId: listMavenArtifacts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MavenArtifactList'
+components:
+  schemas:
+    MavenConnectorConfig:
+      type: object
+      properties:
+        repositories:
+          type: array
+          required: true
+          items:
+            $ref: '#/components/schemas/MavenRepository'
+        artifacts:
+          type: array
+          required: true
+          items:
+            $ref: '#/components/schemas/MavenArtifact'
+    MavenRepositoryList:
+      type: object
+      properties:
+        repositories:
+          type: array
+          required: true
+          items:
+            $ref: '#/components/schemas/MavenRepository'
+    MavenRepository:
+      type: object
+      properties:
+        id:
+          type: string
+          required: true
+          nullable: false
+        url:
+          type: string
+          required: true
+          nullable: false
+    MavenArtifactList:
+      type: object
+      properties:
+        artifacts:
+          type: array
+          required: true
+          items:
+            $ref: '#/components/schemas/MavenArtifact'
+    MavenArtifact:
+      type: object
+      properties:
+        groupId:
+          type: string
+          required: true
+          nullable: false
+        artifactId:
+          type: string
+          required: true
+          nullable: false
+        version:
+          type: string
+          required: false
+          nullable: true
+
+  securitySchemes:
+    modelixJwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - modelixJwtAuth: []

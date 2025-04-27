@@ -182,6 +182,8 @@ fun Application.workspaceManagerModule() {
             this.adminModule(deploymentManager)
         }
 
+        MavenControllerImpl().install(this)
+
         requiresLogin {
             get("/") {
                 call.respondHtmlSafe(HttpStatusCode.OK) {

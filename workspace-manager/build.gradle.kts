@@ -50,6 +50,7 @@ dependencies {
     implementation(libs.zt.zip)
     implementation(project(":gitui"))
     implementation(project(":workspaces"))
+    implementation(project(":workspace-manager-openapi"))
     mpsPlugins(libs.bundles.modelix.mpsPlugins.all)
     mpsPlugins(project(":workspace-client-plugin", configuration = "archives"))
     runtimeOnly(libs.slf4j.simple)

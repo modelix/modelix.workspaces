@@ -26,7 +26,7 @@ data class Workspace(
     val id: String,
     val name: String? = null,
     val mpsVersion: String? = null,
-    val memoryLimit: String = "2.0Gi",
+    val memoryLimit: String = "2Gi",
     val modelRepositories: List<ModelRepository> = listOf(),
     val gitRepositories: List<GitRepository> = listOf(),
     val mavenRepositories: List<MavenRepository> = listOf(),

@@ -124,6 +124,14 @@ import org.modelix.instancesmanager.DeploymentsProxy
 import org.modelix.instancesmanager.adminModule
 import org.modelix.model.persistent.HashUtil
 import org.modelix.model.server.ModelServerPermissionSchema
+import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController
+import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController.Companion.modelixMavenConnectorRoutes
+import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorRepositoriesController
+import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorRepositoriesController.Companion.modelixMavenConnectorRepositoriesRoutes
+import org.modelix.services.maven_connector.stubs.controllers.TypedApplicationCall
+import org.modelix.services.maven_connector.stubs.models.MavenConnectorConfig
+import org.modelix.services.maven_connector.stubs.models.MavenRepository
+import org.modelix.services.maven_connector.stubs.models.MavenRepositoryList
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
@@ -183,6 +191,41 @@ fun Application.workspaceManagerModule() {
         }
 
         MavenControllerImpl().install(this)
+        WorkspacesController(manager).install(this)
+
+        modelixMavenConnectorRoutes(object : ModelixMavenConnectorController {
+            override suspend fun getMavenConnectorConfig(call: TypedApplicationCall<MavenConnectorConfig>) {
+                TODO("Not yet implemented")
+            }
+        })
+
+        modelixMavenConnectorRepositoriesRoutes(object : ModelixMavenConnectorRepositoriesController {
+            override suspend fun deleteMavenRepository(
+                repositoryId: String,
+                call: ApplicationCall,
+            ) {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun listMavenRepositories(call: TypedApplicationCall<MavenRepositoryList>) {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun getMavenRepository(
+                repositoryId: String,
+                call: TypedApplicationCall<MavenRepository>,
+            ) {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun updateMavenRepository(
+                repositoryId: String,
+                mavenRepository: MavenRepository,
+                call: ApplicationCall,
+            ) {
+                TODO("Not yet implemented")
+            }
+        })
 
         requiresLogin {
             get("/") {

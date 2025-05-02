@@ -56,6 +56,7 @@ zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }
 modelix-syncPlugin3 = { group = "org.modelix.mps", name = "mps-sync-plugin3", version.ref = "modelix-core" }
 modelix-mpsPlugins-generator = { group = "org.modelix.mps", name = "generator-execution-plugin", version.ref = "modelix-mps-plugins" }
 modelix-mpsPlugins-diff = { group = "org.modelix.mps", name = "diff-plugin", version.ref = "modelix-mps-plugins" }
+modelix-api-server-stubs = { group = "org.modelix", name = "api-server-stubs-ktor", version = "1.0.0" }
 
 [bundles]
 ktor-client = [

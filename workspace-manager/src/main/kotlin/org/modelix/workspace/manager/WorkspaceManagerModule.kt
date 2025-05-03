@@ -191,7 +191,7 @@ fun Application.workspaceManagerModule() {
         }
 
         MavenControllerImpl().install(this)
-        WorkspacesController(manager).install(this)
+        WorkspacesController(manager, deploymentManager).install(this)
 
         modelixMavenConnectorRoutes(object : ModelixMavenConnectorController {
             override suspend fun getMavenConnectorConfig(call: TypedApplicationCall<MavenConnectorConfig>) {

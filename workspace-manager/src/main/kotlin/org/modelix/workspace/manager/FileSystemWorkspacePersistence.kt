@@ -5,7 +5,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.modelix.model.persistent.SerializationUtil
 import org.modelix.workspaces.ModelRepository
-import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.LegacyWorkspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacePersistence
@@ -16,8 +16,8 @@ import kotlin.math.max
 @Serializable
 private data class WorkspacesDB(
     val lastUsedWorkspaceId: Long = 0L, // for preventing reuse after delete
-    val workspaces: Map<String, Workspace> = emptyMap(),
-    val workspacesByHash: Map<WorkspaceHash, Workspace> = emptyMap(),
+    val workspaces: Map<String, LegacyWorkspace> = emptyMap(),
+    val workspacesByHash: Map<WorkspaceHash, LegacyWorkspace> = emptyMap(),
 )
 
 class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
@@ -41,13 +41,13 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
         return db.workspaces.keys
     }
 
-    override fun getAllWorkspaces(): List<Workspace> {
+    override fun getAllWorkspaces(): List<LegacyWorkspace> {
         return db.workspaces.values.toList()
     }
 
     @Synchronized
-    override fun newWorkspace(): Workspace {
-        val workspace = Workspace(
+    override fun newWorkspace(): LegacyWorkspace {
+        val workspace = LegacyWorkspace(
             id = newWorkspaceId(),
             modelRepositories = listOf(ModelRepository(id = "default")),
         )
@@ -61,7 +61,7 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
         writeDBFile()
     }
 
-    override fun getWorkspaceForId(id: String): Workspace? {
+    override fun getWorkspaceForId(id: String): LegacyWorkspace? {
         return db.workspaces[id]
     }
 
@@ -70,7 +70,7 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
     }
 
     @Synchronized
-    override fun update(workspace: Workspace): WorkspaceHash {
+    override fun update(workspace: LegacyWorkspace): WorkspaceHash {
         val hash = workspace.withHash().hash()
         db = db.copy(
             lastUsedWorkspaceId = max(db.lastUsedWorkspaceId, workspace.id.toLong(16)),

@@ -153,8 +153,10 @@ import java.util.zip.ZipOutputStream
 fun Application.workspaceManagerModule() {
     val credentialsEncryption = createCredentialEncryption()
     val manager = WorkspaceManager(credentialsEncryption)
-    val deploymentManager = DeploymentManager(manager)
-    val deploymentsProxy = DeploymentsProxy(deploymentManager)
+    //val deploymentManager = DeploymentManager(manager)
+    val buildManager = WorkspaceBuildManager()
+    val instancesManager = WorkspaceInstancesManager(manager, buildManager, coroutinesScope = this)
+    //val deploymentsProxy = DeploymentsProxy(deploymentManager)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
     deploymentsProxy.startServer()
@@ -191,7 +193,7 @@ fun Application.workspaceManagerModule() {
         }
 
         MavenControllerImpl().install(this)
-        WorkspacesController(manager, deploymentManager).install(this)
+        WorkspacesController(manager, instancesManager).install(this)
 
         modelixMavenConnectorRoutes(object : ModelixMavenConnectorController {
             override suspend fun getMavenConnectorConfig(call: TypedApplicationCall<MavenConnectorConfig>) {

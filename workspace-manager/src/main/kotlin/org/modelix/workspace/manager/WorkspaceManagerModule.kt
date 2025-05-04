@@ -137,7 +137,7 @@ import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
 import org.modelix.workspaces.SharedInstance
 import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.LegacyWorkspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
@@ -837,7 +837,7 @@ fun Application.workspaceManagerModule() {
                         return@post
                     }
                     val uncheckedWorkspaceConfig = try {
-                        Yaml.default.decodeFromString<Workspace>(yamlText)
+                        Yaml.default.decodeFromString<LegacyWorkspace>(yamlText)
                     } catch (e: Exception) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Parse error")
                         return@post
@@ -1356,7 +1356,7 @@ suspend fun ApplicationCall.respondTarGz(body: (TarArchiveOutputStream) -> Unit)
     }
 }
 
-fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: Workspace, existingWorkspaceConfig: Workspace): Workspace =
+fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: LegacyWorkspace, existingWorkspaceConfig: LegacyWorkspace): LegacyWorkspace =
     mergeMaskedCredentialsWithPreviousCredentials(receivedWorkspaceConfig, existingWorkspaceConfig)
         .copy(
             // set ID just in case the user copy-pastes a workspace and forgets to change the ID
@@ -1366,7 +1366,7 @@ fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: Workspace, existing
 
 const val MASKED_CREDENTIAL_VALUE = "••••••••"
 
-fun Workspace.maskCredentials(): Workspace {
+fun LegacyWorkspace.maskCredentials(): LegacyWorkspace {
     val gitRepositories = this.gitRepositories.map { repository ->
         repository.copy(
             credentials = repository.credentials?.copy(
@@ -1379,9 +1379,9 @@ fun Workspace.maskCredentials(): Workspace {
 }
 
 fun mergeMaskedCredentialsWithPreviousCredentials(
-    receivedWorkspaceConfig: Workspace,
-    existingWorkspaceConfig: Workspace,
-): Workspace {
+    receivedWorkspaceConfig: LegacyWorkspace,
+    existingWorkspaceConfig: LegacyWorkspace,
+): LegacyWorkspace {
     val gitRepositories = receivedWorkspaceConfig.gitRepositories.mapIndexed { i, receivedRepository ->
         // Credentials will be reused, when:
         // * When the URL is the same,

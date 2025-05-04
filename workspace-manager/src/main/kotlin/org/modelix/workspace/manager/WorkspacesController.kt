@@ -26,7 +26,7 @@ import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceList
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceState
 import org.modelix.services.workspaces.stubs.models.WorkspaceList
 import org.modelix.workspaces.DEFAULT_MPS_VERSION
-import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.LegacyWorkspace
 import org.modelix.workspaces.MavenRepository
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import java.util.UUID
@@ -203,7 +203,7 @@ class WorkspacesController(
     }
 }
 
-fun Workspace.convert() = WorkspaceConfig(
+fun LegacyWorkspace.convert() = WorkspaceConfig(
     id = id,
     name = name ?: "",
     mpsVersion = mpsVersion ?: DEFAULT_MPS_VERSION,

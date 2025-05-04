@@ -40,7 +40,7 @@ import org.modelix.buildtools.SourceModuleOwner
 import org.modelix.buildtools.newChild
 import org.modelix.buildtools.xmlToString
 import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.LegacyWorkspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceProgressItems
@@ -239,7 +239,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
         }
     }
 
-    private fun Workspace.additionalGenerationDependenciesAsMap(): Map<ModuleId, Set<ModuleId>> {
+    private fun LegacyWorkspace.additionalGenerationDependenciesAsMap(): Map<ModuleId, Set<ModuleId>> {
         return additionalGenerationDependencies
             .groupBy { ModuleId(it.from) }
             .mapValues { it.value.map { ModuleId(it.to) }.toSet() }

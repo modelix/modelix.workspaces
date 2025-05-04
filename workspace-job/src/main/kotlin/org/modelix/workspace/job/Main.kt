@@ -27,7 +27,7 @@ import io.ktor.http.appendPathSegments
 import io.ktor.http.takeFrom
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
-import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.LegacyWorkspace
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.withHash
@@ -61,7 +61,7 @@ fun main(args: Array<String>) {
 
         runBlocking {
             printNewJobStatus(WorkspaceBuildStatus.Running)
-            val workspace: Workspace = httpClient.get {
+            val workspace: LegacyWorkspace = httpClient.get {
                 url {
                     takeFrom(serverUrl)
                     appendPathSegments(workspaceHash.hash)

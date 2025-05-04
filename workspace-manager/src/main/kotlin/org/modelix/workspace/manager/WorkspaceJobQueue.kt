@@ -34,7 +34,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.modelix.model.persistent.HashUtil
-import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.LegacyWorkspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
@@ -42,7 +42,7 @@ import java.io.IOException
 import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 
-class WorkspaceJobQueue(val tokenGenerator: (Workspace) -> String) {
+class WorkspaceJobQueue(val tokenGenerator: (LegacyWorkspace) -> String) {
 
     private val workspaceHash2job: MutableMap<WorkspaceHash, Job> = LinkedHashMap()
     private val coroutinesScope = CoroutineScope(Dispatchers.Default)

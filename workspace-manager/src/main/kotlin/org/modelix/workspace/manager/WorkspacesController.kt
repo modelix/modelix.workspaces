@@ -2,10 +2,11 @@ package org.modelix.workspace.manager
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.auth.jwt.JWTPrincipal
+import io.ktor.server.auth.principal
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import org.modelix.authorization.getUserName
-import org.modelix.instancesmanager.DeploymentManager
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesDraftsController
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesDraftsController.Companion.modelixWorkspacesDraftsRoutes
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesController
@@ -25,13 +26,16 @@ import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceList
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceState
 import org.modelix.services.workspaces.stubs.models.WorkspaceList
 import org.modelix.workspaces.DEFAULT_MPS_VERSION
-import org.modelix.workspaces.MavenRepository
 import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.MavenRepository
+import org.modelix.workspaces.WorkspacesPermissionSchema
 import java.util.UUID
 
-class WorkspacesController(val manager: WorkspaceManager, val deployments: DeploymentManager) {
+class WorkspacesController(
+    val manager: WorkspaceManager,
+    val instancesManager: WorkspaceInstancesManager,
+) {
 
-    private var workspaceInstances: WorkspaceInstanceList = WorkspaceInstanceList(emptyList())
     private val drafts: GitChangeDraftList = GitChangeDraftList(emptyList())
 
     fun install(route: Route) {
@@ -97,7 +101,7 @@ class WorkspacesController(val manager: WorkspaceManager, val deployments: Deplo
                 instanceId: String,
                 call: TypedApplicationCall<WorkspaceInstance>,
             ) {
-                val instance = workspaceInstances.instances.find { it.id == instanceId }
+                val instance = instancesManager.getInstancesList().instances.find { it.id == instanceId }
                 if (instance == null) {
                     call.respond(HttpStatusCode.NotFound)
                 } else {
@@ -106,10 +110,11 @@ class WorkspacesController(val manager: WorkspaceManager, val deployments: Deplo
             }
 
             override suspend fun listInstances(workspaceId: String?, call: TypedApplicationCall<WorkspaceInstanceList>) {
-                val filteredInstances = if (workspaceId == null) {
-                    workspaceInstances
+                val allInstances = instancesManager.getInstancesList()
+                val filteredInstances = if (workspaceId != null) {
+                    allInstances.copy(instances = allInstances.instances.filter { it.config.id == workspaceId })
                 } else {
-                    workspaceInstances.copy(instances = workspaceInstances.instances.filter { it.workspaceId == workspaceId })
+                    allInstances
                 }
                 call.respondTyped(filteredInstances)
             }
@@ -118,15 +123,42 @@ class WorkspacesController(val manager: WorkspaceManager, val deployments: Deplo
                 workspaceInstance: WorkspaceInstance,
                 call: TypedApplicationCall<WorkspaceInstance>
             ) {
-                workspaceInstances = workspaceInstances.copy(
-                    instances = workspaceInstances.instances + workspaceInstance.copy(
-                        id = UUID.randomUUID().toString(),
-                        workspaceId = workspaceInstance.workspaceId,
-                        drafts = emptyList(),
-                        owner = call.getUserName(),
-                        state = WorkspaceInstanceState.CREATED
+                var readonly = workspaceInstance.readonly ?: false
+                if (readonly == false) {
+                    val token = call.principal<JWTPrincipal>()?.payload
+                    if (token == null) {
+                        readonly = true
+                    } else {
+                        val permissionEvaluator = manager.jwtUtil.createPermissionEvaluator(token, WorkspacesPermissionSchema.SCHEMA)
+                        manager.accessControlPersistence.read().load(token, permissionEvaluator)
+                        if (!permissionEvaluator.hasPermission(WorkspacesPermissionSchema.workspaces.workspace(workspaceInstance.config.id).modelRepository.write)) {
+                            readonly = true
+                        }
+                    }
+                }
+
+                instancesManager.updateInstancesList { list ->
+                    list.copy(
+                        instances = list.instances + workspaceInstance.copy(
+                            id = UUID.randomUUID().toString(),
+                            drafts = emptyList(),
+                            owner = call.getUserName(),
+                            state = WorkspaceInstanceState.CREATED,
+                            readonly = readonly
+                        )
                     )
-                )
+                }
+            }
+
+            override suspend fun deleteInstance(
+                instanceId: String,
+                call: ApplicationCall
+            ) {
+                instancesManager.updateInstancesList { list ->
+                    list.copy(
+                        instances = list.instances.filter { it.id != instanceId }
+                    )
+                }
             }
         })
 
@@ -136,15 +168,17 @@ class WorkspacesController(val manager: WorkspaceManager, val deployments: Deplo
                 workspaceInstanceEnabled: WorkspaceInstanceEnabled,
                 call: ApplicationCall
             ) {
-                workspaceInstances = workspaceInstances.copy(
-                    instances = workspaceInstances.instances.map {
-                        if (it.id == instanceId) {
-                            it.copy(enabled = workspaceInstanceEnabled.enabled)
-                        } else {
-                            it
+                instancesManager.updateInstancesList { list ->
+                    list.copy(
+                        instances = list.instances.map {
+                            if (it.id == instanceId) {
+                                it.copy(enabled = workspaceInstanceEnabled.enabled)
+                            } else {
+                                it
+                            }
                         }
-                    }
-                )
+                    )
+                }
                 call.respond(HttpStatusCode.OK)
             }
         })
@@ -167,13 +201,13 @@ class WorkspacesController(val manager: WorkspaceManager, val deployments: Deplo
             }
         })
     }
-
-    private fun Workspace.convert() = WorkspaceConfig(
-        id = id,
-        name = name ?: "",
-        mpsVersion = mpsVersion ?: DEFAULT_MPS_VERSION,
-        memoryLimit = memoryLimit,
-        gitRepositories = gitRepositories.map { GitRepository(it.url, null) },
-        mavenRepositories = mavenRepositories.map { org.modelix.services.workspaces.stubs.models.MavenRepository(it.url) },
-    )
 }
+
+fun Workspace.convert() = WorkspaceConfig(
+    id = id,
+    name = name ?: "",
+    mpsVersion = mpsVersion ?: DEFAULT_MPS_VERSION,
+    memoryLimit = memoryLimit,
+    gitRepositories = gitRepositories.map { GitRepository(it.url, null) },
+    mavenRepositories = mavenRepositories.map { org.modelix.services.workspaces.stubs.models.MavenRepository(it.url) },
+)

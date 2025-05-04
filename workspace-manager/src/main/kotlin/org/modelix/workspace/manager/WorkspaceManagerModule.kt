@@ -155,6 +155,8 @@ fun Application.workspaceManagerModule() {
     val manager = WorkspaceManager(credentialsEncryption)
     val deploymentManager = DeploymentManager(manager)
     val deploymentsProxy = DeploymentsProxy(deploymentManager)
+    val buildManager = WorkspaceBuildManager()
+    val instancesManager = WorkspaceInstancesManager(manager, buildManager, coroutinesScope = this)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
     deploymentsProxy.startServer()
@@ -191,7 +193,7 @@ fun Application.workspaceManagerModule() {
         }
 
         MavenControllerImpl().install(this)
-        WorkspacesController(manager, deploymentManager).install(this)
+        WorkspacesController(manager, instancesManager).install(this)
 
         modelixMavenConnectorRoutes(object : ModelixMavenConnectorController {
             override suspend fun getMavenConnectorConfig(call: TypedApplicationCall<MavenConnectorConfig>) {

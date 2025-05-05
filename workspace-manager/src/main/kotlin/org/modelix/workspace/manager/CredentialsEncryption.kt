@@ -5,7 +5,7 @@ import io.ktor.server.util.url
 import org.jasypt.util.text.AES256TextEncryptor
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
-import org.modelix.workspaces.LegacyWorkspace
+import org.modelix.workspaces.InternalWorkspaceConfig
 
 /**
  *
@@ -46,10 +46,10 @@ class CredentialsEncryption(key: String) {
     }
 }
 
-fun CredentialsEncryption.copyWithEncryptedCredentials(workspace: LegacyWorkspace): LegacyWorkspace =
+fun CredentialsEncryption.copyWithEncryptedCredentials(workspace: InternalWorkspaceConfig): InternalWorkspaceConfig =
     workspace.copy(gitRepositories = workspace.gitRepositories.map(::copyWithEncryptedCredentials))
 
-fun CredentialsEncryption.copyWithDecryptedCredentials(workspace: LegacyWorkspace): LegacyWorkspace =
+fun CredentialsEncryption.copyWithDecryptedCredentials(workspace: InternalWorkspaceConfig): InternalWorkspaceConfig =
     workspace.copy(gitRepositories = workspace.gitRepositories.map(::copyWithDecryptedCredentials))
 
 fun CredentialsEncryption.copyWithEncryptedCredentials(gitRepository: GitRepository): GitRepository =

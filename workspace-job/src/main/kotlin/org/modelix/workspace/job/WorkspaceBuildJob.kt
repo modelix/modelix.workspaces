@@ -40,7 +40,7 @@ import org.modelix.buildtools.SourceModuleOwner
 import org.modelix.buildtools.newChild
 import org.modelix.buildtools.xmlToString
 import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.LegacyWorkspace
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceProgressItems
@@ -56,7 +56,7 @@ import kotlin.io.path.name
 import kotlin.io.path.walk
 import kotlin.time.Duration.Companion.minutes
 
-class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpClient, val serverUrl: String) {
+class WorkspaceBuildJob(val workspace: InternalWorkspaceConfig, val httpClient: HttpClient, val serverUrl: String) {
     private val workspaceDir = File(".").canonicalFile
     val progressItems = WorkspaceProgressItems()
 
@@ -100,7 +100,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
     private fun copyMavenDependencies(): List<File> {
         return workspace.mavenDependencies.map { mavenDep ->
             LOG.info { "Resolving $mavenDep" }
-            MavenDownloader(workspace.workspace, workspaceDir).downloadAndCopyFromMaven(mavenDep) { println(it) }
+            MavenDownloader(workspace, workspaceDir).downloadAndCopyFromMaven(mavenDep) { println(it) }
         }
     }
 
@@ -126,7 +126,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                 buildScriptGenerator = BuildScriptGenerator(
                     modulesMiner,
                     ignoredModules = workspace.ignoredModules.map { ModuleId(it) }.toSet(),
-                    additionalGenerationDependencies = workspace.workspace.additionalGenerationDependenciesAsMap(),
+                    additionalGenerationDependencies = workspace.additionalGenerationDependenciesAsMap(),
                 )
                 runSafely {
                     modulesXml = xmlToString(buildModulesXml(buildScriptGenerator.modulesMiner.getModules()))
@@ -141,7 +141,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
             progressItems.build.deleteUnusedModules.execute {
                 // to reduce the required memory include only those modules in the zip that are actually used
                 val resolver = ModuleResolver(modulesMiner.getModules(), workspace.ignoredModules.map { ModuleId(it) }.toSet(), true)
-                val graph = PublicationDependencyGraph(resolver, workspace.workspace.additionalGenerationDependenciesAsMap())
+                val graph = PublicationDependencyGraph(resolver, workspace.additionalGenerationDependenciesAsMap())
                 graph.load(modulesMiner.getModules().getModules().values)
                 val sourceModules: Set<ModuleId> = modulesMiner.getModules().getModules()
                     .filter { it.value.owner is SourceModuleOwner }.keys -
@@ -239,7 +239,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
         }
     }
 
-    private fun LegacyWorkspace.additionalGenerationDependenciesAsMap(): Map<ModuleId, Set<ModuleId>> {
+    private fun InternalWorkspaceConfig.additionalGenerationDependenciesAsMap(): Map<ModuleId, Set<ModuleId>> {
         return additionalGenerationDependencies
             .groupBy { ModuleId(it.from) }
             .mapValues { it.value.map { ModuleId(it.to) }.toSet() }

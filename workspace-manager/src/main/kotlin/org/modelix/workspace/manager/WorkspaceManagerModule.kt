@@ -119,9 +119,6 @@ import org.modelix.authorization.requiresLogin
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
-import org.modelix.instancesmanager.DeploymentManager
-import org.modelix.instancesmanager.DeploymentsProxy
-import org.modelix.instancesmanager.adminModule
 import org.modelix.model.persistent.HashUtil
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController
@@ -137,7 +134,7 @@ import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
 import org.modelix.workspaces.SharedInstance
 import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.LegacyWorkspace
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
@@ -154,12 +151,12 @@ fun Application.workspaceManagerModule() {
     val credentialsEncryption = createCredentialEncryption()
     val manager = WorkspaceManager(credentialsEncryption)
     //val deploymentManager = DeploymentManager(manager)
-    val buildManager = WorkspaceBuildManager()
+    val buildManager = WorkspaceBuildManager(this, manager.workspaceJobTokenGenerator)
     val instancesManager = WorkspaceInstancesManager(manager, buildManager, coroutinesScope = this)
     //val deploymentsProxy = DeploymentsProxy(deploymentManager)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
-    deploymentsProxy.startServer()
+    //deploymentsProxy.startServer()
 
     install(ModelixAuthorization) {
         permissionSchema = WorkspacesPermissionSchema.SCHEMA
@@ -188,12 +185,12 @@ fun Application.workspaceManagerModule() {
     routing {
         staticResources("static/", basePackage = "org.modelix.workspace.static")
 
-        route("instances") {
-            this.adminModule(deploymentManager)
-        }
+//        route("instances") {
+//            this.adminModule(deploymentManager)
+//        }
 
         MavenControllerImpl().install(this)
-        WorkspacesController(manager, instancesManager).install(this)
+        WorkspacesController(manager, instancesManager, buildManager).install(this)
 
         modelixMavenConnectorRoutes(object : ModelixMavenConnectorController {
             override suspend fun getMavenConnectorConfig(call: TypedApplicationCall<MavenConnectorConfig>) {
@@ -837,7 +834,7 @@ fun Application.workspaceManagerModule() {
                         return@post
                     }
                     val uncheckedWorkspaceConfig = try {
-                        Yaml.default.decodeFromString<LegacyWorkspace>(yamlText)
+                        Yaml.default.decodeFromString<InternalWorkspaceConfig>(yamlText)
                     } catch (e: Exception) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Parse error")
                         return@post
@@ -1073,7 +1070,7 @@ fun Application.workspaceManagerModule() {
                             ENV modelix_workspace_id=${workspace.id}  
                             ENV modelix_workspace_hash=${workspace.hash()}   
                             ENV modelix_workspace_server=http://${HELM_PREFIX}workspace-manager:28104/      
-                            ENV INITIAL_JWT_TOKEN=$jwtToken  
+                            ENV INITIAL_JWT_TOKEN=$jwtToken
                             
                             RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
                             
@@ -1356,7 +1353,7 @@ suspend fun ApplicationCall.respondTarGz(body: (TarArchiveOutputStream) -> Unit)
     }
 }
 
-fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: LegacyWorkspace, existingWorkspaceConfig: LegacyWorkspace): LegacyWorkspace =
+fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: InternalWorkspaceConfig, existingWorkspaceConfig: InternalWorkspaceConfig): InternalWorkspaceConfig =
     mergeMaskedCredentialsWithPreviousCredentials(receivedWorkspaceConfig, existingWorkspaceConfig)
         .copy(
             // set ID just in case the user copy-pastes a workspace and forgets to change the ID
@@ -1366,7 +1363,7 @@ fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: LegacyWorkspace, ex
 
 const val MASKED_CREDENTIAL_VALUE = "••••••••"
 
-fun LegacyWorkspace.maskCredentials(): LegacyWorkspace {
+fun InternalWorkspaceConfig.maskCredentials(): InternalWorkspaceConfig {
     val gitRepositories = this.gitRepositories.map { repository ->
         repository.copy(
             credentials = repository.credentials?.copy(
@@ -1379,9 +1376,9 @@ fun LegacyWorkspace.maskCredentials(): LegacyWorkspace {
 }
 
 fun mergeMaskedCredentialsWithPreviousCredentials(
-    receivedWorkspaceConfig: LegacyWorkspace,
-    existingWorkspaceConfig: LegacyWorkspace,
-): LegacyWorkspace {
+    receivedWorkspaceConfig: InternalWorkspaceConfig,
+    existingWorkspaceConfig: InternalWorkspaceConfig,
+): InternalWorkspaceConfig {
     val gitRepositories = receivedWorkspaceConfig.gitRepositories.mapIndexed { i, receivedRepository ->
         // Credentials will be reused, when:
         // * When the URL is the same,
@@ -1442,7 +1439,7 @@ private fun FlowOrInteractiveOrPhrasingContent.buildPermissionManagementLink(res
     }
 }
 
-private fun TarArchiveOutputStream.putFile(name: String, content: ByteArray) {
+fun TarArchiveOutputStream.putFile(name: String, content: ByteArray) {
     putArchiveEntry(TarArchiveEntry(name).also { it.size = content.size.toLong() })
     write(content)
     closeArchiveEntry()

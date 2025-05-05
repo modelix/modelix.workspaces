@@ -22,7 +22,7 @@ import org.modelix.model.persistent.HashUtil
 const val DEFAULT_MPS_VERSION = "2024.1"
 
 @Serializable
-data class Workspace(
+data class InternalWorkspaceConfig(
     val id: String,
     val name: String? = null,
     val mpsVersion: String? = null,
@@ -42,6 +42,18 @@ data class Workspace(
 ) {
     fun uploadIds() = uploads.map { UploadId(it) }
     fun toYaml() = Yaml.default.encodeToString(this).replace("\nwaitForIndexer: false", "").replace("\nwaitForIndexer: true", "")
+
+    fun normalizeForBuild() = copy(
+        name = null,
+        mpsVersion = mpsVersion ?: DEFAULT_MPS_VERSION,
+        memoryLimit = "2Gi",
+        modelRepositories = emptyList(),
+        gitRepositories = gitRepositories.map { it.copy(credentials = null) },
+        loadUsedModulesOnly = false,
+        sharedInstances = emptyList(),
+        waitForIndexer = true,
+        modelSyncEnabled = false
+    )
 }
 
 /**
@@ -50,7 +62,7 @@ data class Workspace(
  * There was an issue in the communication between the workspace-job and the workspace-manager,
  * because of a hash mismatch.
  */
-data class WorkspaceAndHash(val workspace: Workspace, private val hash: WorkspaceHash) {
+data class WorkspaceAndHash(val workspace: InternalWorkspaceConfig, private val hash: WorkspaceHash) {
     fun hash(): WorkspaceHash = hash
     fun uploadIds() = workspace.uploadIds()
 
@@ -72,8 +84,8 @@ data class WorkspaceAndHash(val workspace: Workspace, private val hash: Workspac
     val sharedInstances = workspace.sharedInstances
 }
 
-fun Workspace.withHash(hash: WorkspaceHash) = WorkspaceAndHash(this, hash)
-fun Workspace.withHash() = WorkspaceAndHash(this, WorkspaceHash(HashUtil.sha256(Json.encodeToString(this))))
+fun InternalWorkspaceConfig.withHash(hash: WorkspaceHash) = WorkspaceAndHash(this, hash)
+fun InternalWorkspaceConfig.withHash() = WorkspaceAndHash(this, WorkspaceHash(HashUtil.sha256(Json.encodeToString(this))))
 
 @Serializable
 data class GenerationDependency(val from: String, val to: String)

@@ -27,20 +27,17 @@ import io.ktor.http.appendPathSegments
 import io.ktor.http.takeFrom
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
-import org.modelix.workspaces.LegacyWorkspace
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceBuildStatus
-import org.modelix.workspaces.WorkspaceHash
-import org.modelix.workspaces.withHash
+import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
 
 private val LOG = mu.KotlinLogging.logger("main")
 
 fun main(args: Array<String>) {
     try {
-        val workspaceId = propertyOrEnv("modelix.workspace.id")
-            ?: throw RuntimeException("modelix.workspace.id not specified")
-        val workspaceHash = propertyOrEnv("modelix.workspace.hash")?.let { WorkspaceHash(it) }
-            ?: throw RuntimeException("modelix.workspace.id not specified")
+        val buildTaskId = propertyOrEnv("modelix.workspace.task.id")?.let { UUID.fromString(it) }
+            ?: throw RuntimeException("modelix.workspace.task.id not specified")
 
         var serverUrl = propertyOrEnv("modelix.workspace.server") ?: "http://workspace-manager:28104/"
         serverUrl = serverUrl.trimEnd('/')
@@ -61,14 +58,14 @@ fun main(args: Array<String>) {
 
         runBlocking {
             printNewJobStatus(WorkspaceBuildStatus.Running)
-            val workspace: LegacyWorkspace = httpClient.get {
+            val workspace: InternalWorkspaceConfig = httpClient.get {
                 url {
                     takeFrom(serverUrl)
-                    appendPathSegments(workspaceHash.hash)
+                    appendPathSegments("modelix", "workspaces", "tasks", buildTaskId.toString(), "config")
                     parameter("decryptCredentials", "true")
                 }
             }.body()
-            val job = WorkspaceBuildJob(workspace.withHash(workspaceHash), httpClient, serverUrl)
+            val job = WorkspaceBuildJob(workspace, httpClient, serverUrl)
             job.buildWorkspace()
             // job.status = if (job.status == WorkspaceBuildStatus.FailedBuild) WorkspaceBuildStatus.ZipSuccessful else WorkspaceBuildStatus.AllSuccessful
         }

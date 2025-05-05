@@ -1,11 +1,10 @@
 package org.modelix.workspace.manager
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.modelix.model.persistent.SerializationUtil
 import org.modelix.workspaces.ModelRepository
-import org.modelix.workspaces.LegacyWorkspace
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacePersistence
@@ -16,8 +15,8 @@ import kotlin.math.max
 @Serializable
 private data class WorkspacesDB(
     val lastUsedWorkspaceId: Long = 0L, // for preventing reuse after delete
-    val workspaces: Map<String, LegacyWorkspace> = emptyMap(),
-    val workspacesByHash: Map<WorkspaceHash, LegacyWorkspace> = emptyMap(),
+    val workspaces: Map<String, InternalWorkspaceConfig> = emptyMap(),
+    val workspacesByHash: Map<WorkspaceHash, InternalWorkspaceConfig> = emptyMap(),
 )
 
 class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
@@ -41,13 +40,13 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
         return db.workspaces.keys
     }
 
-    override fun getAllWorkspaces(): List<LegacyWorkspace> {
+    override fun getAllWorkspaces(): List<InternalWorkspaceConfig> {
         return db.workspaces.values.toList()
     }
 
     @Synchronized
-    override fun newWorkspace(): LegacyWorkspace {
-        val workspace = LegacyWorkspace(
+    override fun newWorkspace(): InternalWorkspaceConfig {
+        val workspace = InternalWorkspaceConfig(
             id = newWorkspaceId(),
             modelRepositories = listOf(ModelRepository(id = "default")),
         )
@@ -61,7 +60,7 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
         writeDBFile()
     }
 
-    override fun getWorkspaceForId(id: String): LegacyWorkspace? {
+    override fun getWorkspaceForId(id: String): InternalWorkspaceConfig? {
         return db.workspaces[id]
     }
 
@@ -70,7 +69,7 @@ class FileSystemWorkspacePersistence(val file: File) : WorkspacePersistence {
     }
 
     @Synchronized
-    override fun update(workspace: LegacyWorkspace): WorkspaceHash {
+    override fun update(workspace: InternalWorkspaceConfig): WorkspaceHash {
         val hash = workspace.withHash().hash()
         db = db.copy(
             lastUsedWorkspaceId = max(db.lastUsedWorkspaceId, workspace.id.toLong(16)),

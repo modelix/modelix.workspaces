@@ -34,33 +34,27 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.modelix.model.persistent.HashUtil
-import org.modelix.workspaces.LegacyWorkspace
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
-import org.modelix.workspaces.WorkspaceHash
-import java.io.IOException
 import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 
-class WorkspaceJobQueue(val tokenGenerator: (LegacyWorkspace) -> String) {
+class WorkspaceJobQueue(val tokenGenerator: (InternalWorkspaceConfig) -> String) {
 
-    private val workspaceHash2job: MutableMap<WorkspaceHash, Job> = LinkedHashMap()
+    private val workspaceConfig2job: MutableMap<InternalWorkspaceConfig, Job> = LinkedHashMap()
     private val coroutinesScope = CoroutineScope(Dispatchers.Default)
 
     init {
-        try {
-            Configuration.setDefaultApiClient(ClientBuilder.cluster().build())
-        } catch (e: IOException) {
-            throw RuntimeException(e)
-        }
+        Configuration.setDefaultApiClient(ClientBuilder.cluster().build())
 
         coroutinesScope.launch {
             while (coroutinesScope.isActive) {
                 delay(3.seconds)
                 try {
-                    if (workspaceHash2job.isNotEmpty()) {
+                    if (workspaceConfig2job.isNotEmpty()) {
                         reconcileKubernetesJobs()
-                        workspaceHash2job.values.forEach { it.updateLog() }
+                        workspaceConfig2job.values.forEach { it.updateLog() }
                     }
                 } catch (ex: Exception) {
                     LOG.error(ex) { "" }
@@ -72,7 +66,7 @@ class WorkspaceJobQueue(val tokenGenerator: (LegacyWorkspace) -> String) {
     private fun baseImageExists(mpsVersion: String): Boolean {
         return try {
             runBlocking {
-                HttpClient(CIO).get("http://${HELM_PREFIX}docker-registry:5000/v2/modelix/workspace-client-baseimage/manifests/${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion ") {
+                HttpClient(CIO).get("http://${HELM_PREFIX}docker-registry:5000/v2/modelix/workspace-client-baseimage/manifests/${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion") {
                     header("Accept", "application/vnd.oci.image.manifest.v1+json")
                 }.status == HttpStatusCode.OK
             }
@@ -87,22 +81,22 @@ class WorkspaceJobQueue(val tokenGenerator: (LegacyWorkspace) -> String) {
     }
 
     fun removeByWorkspaceId(workspaceId: String) {
-        synchronized(workspaceHash2job) {
-            workspaceHash2job -= workspaceHash2job.filter { it.value.workspace.id == workspaceId }.keys
+        synchronized(workspaceConfig2job) {
+            workspaceConfig2job -= workspaceConfig2job.filter { it.value.workspace.id == workspaceId }.keys
         }
     }
 
-    fun getJobs(): List<Job> = synchronized(workspaceHash2job) { workspaceHash2job.values.toList() }
+    fun getJobs(): List<Job> = synchronized(workspaceConfig2job) { workspaceConfig2job.values.toList() }
 
     fun getOrCreateJob(workspace: WorkspaceAndHash): Job {
-        synchronized(workspaceHash2job) {
-            return workspaceHash2job.getOrPut(workspace.hash()) { Job(workspace) }
+        synchronized(workspaceConfig2job) {
+            return workspaceConfig2job.getOrPut(workspace.workspace) { Job(workspace) }
         }
     }
 
     private fun reconcileKubernetesJobs() {
-        val expectedJobs: Map<String, Job> = synchronized(workspaceHash2job) {
-            workspaceHash2job.values.associateBy { it.kubernetesJobName }
+        val expectedJobs: Map<String, Job> = synchronized(workspaceConfig2job) {
+            workspaceConfig2job.values.associateBy { it.kubernetesJobName }
         }
         val existingJobs: Map<String?, V1Job> = BatchV1Api()
             .listNamespacedJob(KUBERNETES_NAMESPACE)

@@ -4,13 +4,13 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
-import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.InternalWorkspaceConfig
 
 class WorkspaceManagerModuleTest {
 
     @Test
     fun `credential values are masked`() {
-        val workspaceConfig = Workspace(
+        val workspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -32,7 +32,7 @@ class WorkspaceManagerModuleTest {
 
     @Test
     fun `previous credentials are not used if credentials where removed`() {
-        val existingWorkspaceConfig = Workspace(
+        val existingWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -44,7 +44,7 @@ class WorkspaceManagerModuleTest {
                 ),
             ),
         )
-        val newWorkspaceConfig = Workspace(
+        val newWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -60,8 +60,8 @@ class WorkspaceManagerModuleTest {
 
     @Test
     fun `masked credentials are ignored if no previous repository exist`() {
-        val existingWorkspaceConfig = Workspace(id = "aId")
-        val newWorkspaceConfig = Workspace(
+        val existingWorkspaceConfig = InternalWorkspaceConfig(id = "aId")
+        val newWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -77,7 +77,7 @@ class WorkspaceManagerModuleTest {
         val mergedWorkspaceConfig = mergeMaskedCredentialsWithPreviousCredentials(newWorkspaceConfig, existingWorkspaceConfig)
 
         assertEquals(
-            Workspace(
+            InternalWorkspaceConfig(
                 id = "aId",
                 gitRepositories = listOf(
                     GitRepository(
@@ -91,8 +91,8 @@ class WorkspaceManagerModuleTest {
 
     @Test
     fun `new credentials are used if no previous repository exist`() {
-        val existingWorkspaceConfig = Workspace(id = "aId")
-        val newWorkspaceConfig = Workspace(
+        val existingWorkspaceConfig = InternalWorkspaceConfig(id = "aId")
+        val newWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -107,7 +107,7 @@ class WorkspaceManagerModuleTest {
 
         val mergedWorkspaceConfig = mergeMaskedCredentialsWithPreviousCredentials(newWorkspaceConfig, existingWorkspaceConfig)
 
-        val expectedWorkspaceConfig = Workspace(
+        val expectedWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -124,7 +124,7 @@ class WorkspaceManagerModuleTest {
 
     @Test
     fun `previous credentials are removed when URL changes`() {
-        val existingWorkspaceConfig = Workspace(
+        val existingWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -136,7 +136,7 @@ class WorkspaceManagerModuleTest {
                 ),
             ),
         )
-        val newWorkspaceConfig = Workspace(
+        val newWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -150,7 +150,7 @@ class WorkspaceManagerModuleTest {
         )
 
         val mergedWorkspaceConfig = mergeMaskedCredentialsWithPreviousCredentials(newWorkspaceConfig, existingWorkspaceConfig)
-        val expectedWorkspaceConfig = Workspace(
+        val expectedWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -163,7 +163,7 @@ class WorkspaceManagerModuleTest {
 
     @Test
     fun `masked credentials are replaced with previous credentials`() {
-        val existingWorkspaceConfig = Workspace(
+        val existingWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -192,7 +192,7 @@ class WorkspaceManagerModuleTest {
 
     @Test
     fun `new credentials are not replaced with previous credentials`() {
-        val existingWorkspaceConfig = Workspace(
+        val existingWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(
@@ -204,7 +204,7 @@ class WorkspaceManagerModuleTest {
                 ),
             ),
         )
-        val newWorkspaceConfig = Workspace(
+        val newWorkspaceConfig = InternalWorkspaceConfig(
             id = "aId",
             gitRepositories = listOf(
                 GitRepository(

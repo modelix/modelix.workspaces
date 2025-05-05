@@ -43,14 +43,14 @@ import org.modelix.model.persistent.SerializationUtil
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.workspaces.ModelServerWorkspacePersistence
 import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.LegacyWorkspace
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacePersistence
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import org.modelix.workspaces.withHash
 import java.io.File
 
-class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption) {
+class WorkspaceManager(val credentialsEncryption: CredentialsEncryption) {
     val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
     private val persistenceFile = File(System.getenv("WORKSPACES_DB_FILE") ?: "/workspace-manager/config/workspaces.json")
     val accessControlPersistence = FileSystemAccessControlPersistence(persistenceFile.parentFile.resolve("permissions.json"))
@@ -63,7 +63,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         val workspacesDir = if (parentRepoDir != null) File(parentRepoDir.parent, "modelix-workspaces") else File("modelix-workspaces")
         workspacesDir.absoluteFile
     }
-    val workspaceJobTokenGenerator: (LegacyWorkspace) -> String = { workspace ->
+    val workspaceJobTokenGenerator: (InternalWorkspaceConfig) -> String = { workspace ->
         jwtUtil.createAccessToken(
             "workspace-job@modelix.org",
             listOf(
@@ -100,7 +100,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
     }
 
     @Synchronized
-    fun update(workspace: LegacyWorkspace): WorkspaceHash {
+    fun update(workspace: InternalWorkspaceConfig): WorkspaceHash {
         val workspaceWithEncryptedCredentials = credentialsEncryption.copyWithEncryptedCredentials(workspace)
         val hash = workspacePersistence.update(workspaceWithEncryptedCredentials)
         synchronized(buildJobs) {
@@ -109,7 +109,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
         return hash
     }
 
-    fun getWorkspaceDirectory(workspace: LegacyWorkspace) = File(directory, workspace.id)
+    fun getWorkspaceDirectory(workspace: InternalWorkspaceConfig) = File(directory, workspace.id)
 
     fun newUploadFolder(): File {
         val existingFolders = getUploadsFolder().listFiles()?.toList() ?: emptyList()
@@ -150,7 +150,7 @@ class WorkspaceManager(private val credentialsEncryption: CredentialsEncryption)
     fun getWorkspaceIds() = workspacePersistence.getWorkspaceIds()
     fun getWorkspaceForId(workspaceId: String) = workspacePersistence.getWorkspaceForId(workspaceId)?.withHash()
     fun getWorkspaceForHash(workspaceHash: WorkspaceHash) = workspacePersistence.getWorkspaceForHash(workspaceHash)
-    fun newWorkspace(owner: String?): LegacyWorkspace {
+    fun newWorkspace(owner: String?): InternalWorkspaceConfig {
         val newWorkspace = workspacePersistence.newWorkspace()
         if (owner != null) {
             accessControlPersistence.update { data ->
@@ -206,7 +206,7 @@ class KestraClient(val jwtUtil: ModelixJWTUtil) {
         return responseObject["results"]!!.jsonArray.map { it.jsonObject["id"]!!.jsonPrimitive.content }
     }
 
-    suspend fun enqueueGitImport(workspace: LegacyWorkspace): JsonObject {
+    suspend fun enqueueGitImport(workspace: InternalWorkspaceConfig): JsonObject {
         val gitRepo = workspace.gitRepositories.first()
 
         updateGitImportFlow()

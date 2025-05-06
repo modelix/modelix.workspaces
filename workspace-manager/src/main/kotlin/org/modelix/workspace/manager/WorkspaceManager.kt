@@ -41,9 +41,9 @@ import org.modelix.authorization.permissions.FileSystemAccessControlPersistence
 import org.modelix.model.lazy.RepositoryId
 import org.modelix.model.persistent.SerializationUtil
 import org.modelix.model.server.ModelServerPermissionSchema
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.ModelServerWorkspacePersistence
 import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacePersistence
 import org.modelix.workspaces.WorkspacesPermissionSchema

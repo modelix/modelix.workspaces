@@ -42,4 +42,11 @@ class Reconciler<E>(val coroutinesScope: CoroutineScope, initialState: E, reconc
     }
 
     fun getDesiredState(): E = desiredState.getValue()
+
+    fun trigger() {
+        desiredState.update {
+            stateChanges.trySend(it)
+            it
+        }
+    }
 }

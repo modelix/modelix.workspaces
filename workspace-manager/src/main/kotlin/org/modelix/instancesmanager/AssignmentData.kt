@@ -19,5 +19,5 @@ class AssignmentData(
     val workspace: WorkspaceAndHash,
     val unassignedInstances: Int,
     val instances: List<InstanceStatus>,
-    val isLatest: Boolean
+    val isLatest: Boolean,
 )

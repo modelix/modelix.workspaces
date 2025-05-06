@@ -3,8 +3,8 @@ package org.modelix.workspace.manager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.modelix.model.persistent.SerializationUtil
-import org.modelix.workspaces.ModelRepository
 import org.modelix.workspaces.InternalWorkspaceConfig
+import org.modelix.workspaces.ModelRepository
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacePersistence

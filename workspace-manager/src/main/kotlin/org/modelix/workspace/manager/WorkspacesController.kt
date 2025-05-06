@@ -19,6 +19,8 @@ import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstan
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesController.Companion.modelixWorkspacesInstancesRoutes
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesEnabledController
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesEnabledController.Companion.modelixWorkspacesInstancesEnabledRoutes
+import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesStateController
+import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesStateController.Companion.modelixWorkspacesInstancesStateRoutes
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesTasksConfigController
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesTasksConfigController.Companion.modelixWorkspacesTasksConfigRoutes
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesTasksContextTarGzController
@@ -36,6 +38,7 @@ import org.modelix.services.workspaces.stubs.models.WorkspaceInstance
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceEnabled
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceList
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceState
+import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceStateObject
 import org.modelix.services.workspaces.stubs.models.WorkspaceList
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspaces.Credentials
@@ -106,7 +109,7 @@ class WorkspacesController(
                         },
                         mavenRepositories = (legacyWorkspaceConfig.mavenRepositories ?: emptyList()).map {
                             MavenRepository(it.url)
-                        }
+                        },
                     ),
                 )
                 call.respond(HttpStatusCode.OK)
@@ -133,12 +136,19 @@ class WorkspacesController(
                 } else {
                     allInstances
                 }
-                call.respondTyped(WorkspaceInstanceList(instances = filteredInstances.map { it.instanceConfig }))
+                val states = instancesManager.getInstanceStates()
+                call.respondTyped(
+                    WorkspaceInstanceList(
+                        instances = filteredInstances.map {
+                            it.instanceConfig.copy(state = states[it.instanceConfig.id]?.deriveState() ?: WorkspaceInstanceState.UNKNOWN)
+                        },
+                    ),
+                )
             }
 
             override suspend fun createInstance(
                 workspaceInstance: WorkspaceInstance,
-                call: TypedApplicationCall<WorkspaceInstance>
+                call: TypedApplicationCall<WorkspaceInstance>,
             ) {
                 var readonly = workspaceInstance.readonly ?: false
                 if (readonly == false) {
@@ -167,16 +177,16 @@ class WorkspacesController(
                             drafts = emptyList(),
                             owner = call.getUserName(),
                             state = WorkspaceInstanceState.CREATED,
-                            readonly = readonly
+                            readonly = readonly,
                         ),
-                        workspaceConfig = workspaceConfig.merge(workspaceInstance.config)
+                        workspaceConfig = workspaceConfig.merge(workspaceInstance.config),
                     )
                 }
             }
 
             override suspend fun deleteInstance(
                 instanceId: String,
-                call: ApplicationCall
+                call: ApplicationCall,
             ) {
                 instancesManager.updateInstancesList { list ->
                     list.filter { it.instanceId != instanceId }
@@ -188,15 +198,15 @@ class WorkspacesController(
             override suspend fun enableInstance(
                 instanceId: String,
                 workspaceInstanceEnabled: WorkspaceInstanceEnabled,
-                call: ApplicationCall
+                call: ApplicationCall,
             ) {
                 instancesManager.updateInstancesList { list ->
                     list.map {
                         if (it.instanceId == instanceId) {
                             it.copy(
                                 instanceConfig = it.instanceConfig.copy(
-                                    enabled = workspaceInstanceEnabled.enabled
-                                )
+                                    enabled = workspaceInstanceEnabled.enabled,
+                                ),
                             )
                         } else {
                             it
@@ -228,7 +238,7 @@ class WorkspacesController(
         modelixWorkspacesTasksConfigRoutes(object : ModelixWorkspacesTasksConfigController {
             override suspend fun getWorkspaceByTaskId(
                 taskId: String,
-                call: TypedApplicationCall<Any>
+                call: TypedApplicationCall<Any>,
             ) {
                 val config = buildManager.getWorkspaceConfigByTaskId(UUID.fromString(taskId))
                 if (config == null) {
@@ -242,7 +252,7 @@ class WorkspacesController(
         modelixWorkspacesTasksContextTarGzRoutes(object : ModelixWorkspacesTasksContextTarGzController {
             override suspend fun getContextForTaskId(
                 taskId: String,
-                call: TypedApplicationCall<ByteArray>
+                call: TypedApplicationCall<ByteArray>,
             ) {
                 val taskUUID = UUID.fromString(taskId)
                 val config = buildManager.getWorkspaceConfigByTaskId(taskUUID)
@@ -253,8 +263,25 @@ class WorkspacesController(
                 }
             }
         })
-    }
 
+        modelixWorkspacesInstancesStateRoutes(object : ModelixWorkspacesInstancesStateController {
+            override suspend fun changeInstanceState(
+                instanceId: String,
+                workspaceInstanceStateObject: WorkspaceInstanceStateObject,
+                call: TypedApplicationCall<WorkspaceInstanceStateObject>,
+            ) {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun getInstanceState(
+                instanceId: String,
+                call: TypedApplicationCall<WorkspaceInstanceStateObject>,
+            ) {
+                val state = instancesManager.getInstanceStates()[instanceId]?.deriveState() ?: WorkspaceInstanceState.UNKNOWN
+                call.respondTyped(WorkspaceInstanceStateObject(state))
+            }
+        })
+    }
 
     private suspend fun respondBuildContext(call: ApplicationCall, workspace: InternalWorkspaceConfig, taskId: UUID) {
         val httpProxy: String? = System.getenv("MODELIX_HTTP_PROXY")?.takeIf { it.isNotEmpty() }
@@ -367,7 +394,6 @@ class WorkspacesController(
     }
 }
 
-
 fun InternalWorkspaceConfig.convert() = WorkspaceConfig(
     id = id,
     name = name ?: "",
@@ -380,9 +406,9 @@ fun InternalWorkspaceConfig.convert() = WorkspaceConfig(
         MavenArtifact(
             groupId = parts[0],
             artifactId = parts[1],
-            version = parts.getOrNull(2)
+            version = parts.getOrNull(2),
         )
-    }
+    },
 )
 
 fun WorkspaceConfig.convert() = InternalWorkspaceConfig(
@@ -420,17 +446,17 @@ fun List<org.modelix.workspaces.GitRepository>.merge(other: List<GitRepository>)
             branch = oldEntry?.branch ?: "master",
             commitHash = oldEntry?.commitHash,
             paths = oldEntry?.paths ?: emptyList(),
-            credentials = newEntry?.credentials?.convert() ?: oldEntry?.credentials
+            credentials = newEntry?.credentials?.convert() ?: oldEntry?.credentials,
         )
     }
 }
 
 fun GitCredentials.convert() = Credentials(
     user = username,
-    password = password
+    password = password,
 )
 
 fun org.modelix.services.workspaces.stubs.models.GenerationDependency.convert() = GenerationDependency(
     from = from,
-    to = to
+    to = to,
 )

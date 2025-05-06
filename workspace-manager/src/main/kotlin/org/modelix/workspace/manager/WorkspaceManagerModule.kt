@@ -132,9 +132,9 @@ import org.modelix.services.maven_connector.stubs.models.MavenRepositoryList
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.SharedInstance
 import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
@@ -150,13 +150,13 @@ import java.util.zip.ZipOutputStream
 fun Application.workspaceManagerModule() {
     val credentialsEncryption = createCredentialEncryption()
     val manager = WorkspaceManager(credentialsEncryption)
-    //val deploymentManager = DeploymentManager(manager)
+    // val deploymentManager = DeploymentManager(manager)
     val buildManager = WorkspaceBuildManager(this, manager.workspaceJobTokenGenerator)
     val instancesManager = WorkspaceInstancesManager(manager, buildManager, coroutinesScope = this)
-    //val deploymentsProxy = DeploymentsProxy(deploymentManager)
+    // val deploymentsProxy = DeploymentsProxy(deploymentManager)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
-    //deploymentsProxy.startServer()
+    // deploymentsProxy.startServer()
 
     install(ModelixAuthorization) {
         permissionSchema = WorkspacesPermissionSchema.SCHEMA

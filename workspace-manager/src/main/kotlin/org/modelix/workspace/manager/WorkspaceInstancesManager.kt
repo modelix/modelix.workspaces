@@ -16,45 +16,68 @@ import io.kubernetes.client.util.ClientBuilder
 import io.kubernetes.client.util.Yaml
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import mu.KotlinLogging
 import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.permissions.AccessControlData
 import org.modelix.authorization.permissions.PermissionParts
-import org.modelix.instancesmanager.DeploymentManager
 import org.modelix.instancesmanager.InstanceName
 import org.modelix.model.server.ModelServerPermissionSchema
+import org.modelix.services.workspaces.ContinuingCallback
 import org.modelix.services.workspaces.InternalWorkspaceInstanceConfig
 import org.modelix.services.workspaces.executeSuspending
 import org.modelix.services.workspaces.metadata
 import org.modelix.services.workspaces.spec
-import org.modelix.services.workspaces.stubs.models.WorkspaceConfig
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstance
-import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceList
-import org.modelix.workspaces.InternalWorkspaceConfig
+import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceState
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import java.io.File
 import java.util.Collections
-import java.util.regex.Pattern
+import kotlin.coroutines.suspendCoroutine
 
 private val LOG = KotlinLogging.logger {}
 
-data class InstancesState(
+private data class InstancesManagerState(
     val instances: List<InternalWorkspaceInstanceConfig> = emptyList(),
-    val images: Map<InternalWorkspaceConfig, ImageNameAndTag> = emptyMap()
 )
+
+class WorkspaceInstanceStateValues(
+    var imageTaskState: TaskState? = null,
+    var image: Result<ImageNameAndTag>? = null,
+    var deployment: V1Deployment? = null,
+    var pod: V1Pod? = null,
+) {
+    fun deriveState(): WorkspaceInstanceState {
+        return when {
+            (deployment?.status?.readyReplicas ?: 0) >= 1 -> WorkspaceInstanceState.RUNNING
+            deployment != null -> WorkspaceInstanceState.LAUNCHING
+            image?.isFailure == true -> WorkspaceInstanceState.BUILD_FAILED
+            image?.getOrNull() != null -> WorkspaceInstanceState.LAUNCHING
+            else -> when (imageTaskState) {
+                null -> WorkspaceInstanceState.CREATED
+                TaskState.CANCELLED -> WorkspaceInstanceState.BUILD_FAILED
+                TaskState.CREATED -> WorkspaceInstanceState.WAITING_FOR_BUILD
+                TaskState.ACTIVE -> WorkspaceInstanceState.WAITING_FOR_BUILD
+                TaskState.COMPLETED -> WorkspaceInstanceState.WAITING_FOR_BUILD
+                TaskState.UNKNOWN -> WorkspaceInstanceState.WAITING_FOR_BUILD
+            }
+        }
+    }
+}
 
 class WorkspaceInstancesManager(
     val workspaceManager: WorkspaceManager,
     val buildManager: WorkspaceBuildManager,
-    val coroutinesScope: CoroutineScope = CoroutineScope(Dispatchers.Default)
+    val coroutinesScope: CoroutineScope = CoroutineScope(Dispatchers.Default),
 ) {
     companion object {
         val KUBERNETES_NAMESPACE = System.getenv("WORKSPACE_CLIENT_NAMESPACE") ?: "default"
         val INSTANCE_PREFIX = System.getenv("WORKSPACE_CLIENT_PREFIX") ?: "wsclt-"
-        val WORKSPACE_CLIENT_DEPLOYMENT_NAME = System.getenv("WORKSPACE_CLIENT_DEPLOYMENT_NAME") ?: "workspace-client"
-        val WORKSPACE_PATTERN = Pattern.compile("workspace-([a-f0-9]+)-([a-zA-Z0-9\\-_\\*]+)")
         val INTERNAL_DOCKER_REGISTRY_AUTHORITY = requireNotNull(System.getenv("INTERNAL_DOCKER_REGISTRY_AUTHORITY"))
         const val TIMEOUT_SECONDS = 10
         const val INSTANCE_ID_LABEL = "modelix.workspace.instance.id"
@@ -69,11 +92,17 @@ class WorkspaceInstancesManager(
     private val indexWasReady: MutableSet<String> = Collections.synchronizedSet(HashSet())
     private val jwtUtil = ModelixJWTUtil().also { it.loadKeysFromEnvironment() }
 
-    private val reconciler = Reconciler(coroutinesScope, InstancesState(), ::reconcile)
-    private val imageUpdateTasks = ReusableTasks<InternalWorkspaceConfig, ImageUpdateTask>()
+    private val reconciler = Reconciler(coroutinesScope, InstancesManagerState(), ::reconcile)
+    private val reconcileJob = coroutinesScope.launch {
+        while (isActive) {
+            delay(2000)
+            reconciler.trigger()
+        }
+    }
 
     fun dispose() {
         reconciler.dispose()
+        reconcileJob.cancel("disposed")
     }
 
     fun updateInstancesList(updater: (List<InternalWorkspaceInstanceConfig>) -> List<InternalWorkspaceInstanceConfig>) {
@@ -84,13 +113,40 @@ class WorkspaceInstancesManager(
 
     fun getInstancesList(): List<InternalWorkspaceInstanceConfig> = reconciler.getDesiredState().instances
 
-    private fun getExistingDeployments(): Map<String, V1Deployment> {
+    suspend fun getInstanceStates(): Map<String, WorkspaceInstanceStateValues> {
+        val managerState = reconciler.getDesiredState()
+
+        val instances: Map<String, InternalWorkspaceInstanceConfig> =
+            managerState.instances.associateBy { it.instanceId }
+        val stateValues = instances.keys.associateWith { WorkspaceInstanceStateValues() }
+
+        for ((instanceId, deployment) in getExistingDeployments()) {
+            stateValues[instanceId]?.deployment = deployment
+        }
+
+        for ((instanceId, pod) in getExistingPods()) {
+            stateValues[instanceId]?.pod = pod
+        }
+
+        for (config in instances.values) {
+            val imageTask = buildManager.getOrCreateWorkspaceImageTask(config.workspaceConfig.normalizeForBuild())
+            val values = stateValues[config.instanceId] ?: continue
+            values.imageTaskState = imageTask.getState()
+            values.image = imageTask.getOutput()
+        }
+
+        return stateValues
+    }
+
+    private suspend fun getExistingDeployments(): Map<String, V1Deployment> {
         val existingDeployments: MutableMap<String, V1Deployment> = HashMap()
         val appsApi = AppsV1Api()
-        val deployments = appsApi
-            .listNamespacedDeployment(KUBERNETES_NAMESPACE)
-            .timeoutSeconds(TIMEOUT_SECONDS)
-            .execute()
+        val deployments = suspendCoroutine {
+            appsApi
+                .listNamespacedDeployment(KUBERNETES_NAMESPACE)
+                .timeoutSeconds(TIMEOUT_SECONDS)
+                .executeAsync(ContinuingCallback(it))
+        }
         for (deployment in deployments.items) {
             val instanceId = deployment.metadata?.labels?.get(INSTANCE_ID_LABEL) ?: continue
             existingDeployments[instanceId] = deployment
@@ -98,7 +154,23 @@ class WorkspaceInstancesManager(
         return existingDeployments
     }
 
-    private suspend fun reconcile(newState: InstancesState) {
+    private suspend fun getExistingPods(): Map<String, V1Pod> {
+        val existingPods: MutableMap<String, V1Pod> = HashMap()
+        val coreApi = CoreV1Api()
+        val pods = suspendCoroutine {
+            coreApi
+                .listNamespacedPod(KUBERNETES_NAMESPACE)
+                .timeoutSeconds(TIMEOUT_SECONDS)
+                .executeAsync(ContinuingCallback(it))
+        }
+        for (pod in pods.items) {
+            val instanceId = pod.metadata?.labels?.get(INSTANCE_ID_LABEL) ?: continue
+            existingPods[instanceId] = pod
+        }
+        return existingPods
+    }
+
+    private suspend fun reconcile(newState: InstancesManagerState) {
         val appsApi = AppsV1Api()
         val coreApi = CoreV1Api()
         val expectedInstances = newState.instances.filter { it.instanceConfig.enabled }.associateBy { it.instanceConfig.id }
@@ -109,13 +181,13 @@ class WorkspaceInstancesManager(
         for (deployment in toRemove.values) {
             val name = deployment.metadata.name
             try {
-                appsApi.deleteNamespacedDeployment(name, DeploymentManager.Companion.KUBERNETES_NAMESPACE)
+                appsApi.deleteNamespacedDeployment(name, KUBERNETES_NAMESPACE)
                     .execute()
             } catch (e: Exception) {
                 LOG.error("Failed to delete deployment $deployment", e)
             }
             try {
-                coreApi.deleteNamespacedService(name, DeploymentManager.Companion.KUBERNETES_NAMESPACE)
+                coreApi.deleteNamespacedService(name, KUBERNETES_NAMESPACE)
                     .execute()
             } catch (e: Exception) {
                 LOG.error("Failed to delete service $deployment", e)
@@ -124,13 +196,10 @@ class WorkspaceInstancesManager(
         for (instance in toAdd.values) {
             try {
                 val workspaceConfig = instance.workspaceConfig
-                val image = newState.images[workspaceConfig.normalizeForBuild()]
-                if (image == null) {
-                    imageUpdateTasks.getOrCreateTask(workspaceConfig.normalizeForBuild()) {
-                        ImageUpdateTask(buildManager.getOrCreateWorkspaceImageTask(workspaceConfig))
-                            .also { it.launch() }
-                    }
-                } else {
+                buildManager.getOrCreateWorkspaceImageTask(workspaceConfig.normalizeForBuild())
+                val imageTask = buildManager.getOrCreateWorkspaceImageTask(workspaceConfig.normalizeForBuild()).also { it.launch() }
+                val image = imageTask.getOutput()?.getOrNull()
+                if (image != null) {
                     createDeployment(instance.instanceConfig, image)
                     createService(instance.instanceConfig)
                 }
@@ -230,11 +299,10 @@ class WorkspaceInstancesManager(
         val appsApi = AppsV1Api()
 
         val existingDeployment = appsApi.listNamespacedDeployment(KUBERNETES_NAMESPACE)
-            .labelSelector("$INSTANCE_ID_LABEL=${workspaceInstance.id}")
             .timeoutSeconds(TIMEOUT_SECONDS)
             .executeSuspending()
             .items
-            .firstOrNull()
+            .firstOrNull { it.metadata.labels?.get(INSTANCE_ID_LABEL) == workspaceInstance.id }
 
         if (existingDeployment != null) return existingDeployment
 
@@ -250,7 +318,7 @@ class WorkspaceInstancesManager(
             template.spec!!.containers[0].apply {
                 addEnvItem(V1EnvVar().name("modelix_workspace_id").value(workspaceId))
                 addEnvItem(V1EnvVar().name("REPOSITORY_ID").value("workspace_$workspaceId"))
-                //addEnvItem(V1EnvVar().name("modelix_workspace_hash").value(workspace.hash().hash))
+                // addEnvItem(V1EnvVar().name("modelix_workspace_hash").value(workspace.hash().hash))
                 addEnvItem(V1EnvVar().name("WORKSPACE_MODEL_SYNC_ENABLED").value(false.toString()))
             }
         }
@@ -273,11 +341,10 @@ class WorkspaceInstancesManager(
         val instanceName = workspaceInstance.instanceName()
         val coreApi = CoreV1Api()
         val existingService = coreApi.listNamespacedService(KUBERNETES_NAMESPACE)
-            .labelSelector("$INSTANCE_ID_LABEL=${workspaceInstance.id}")
             .timeoutSeconds(TIMEOUT_SECONDS)
             .executeSuspending()
             .items
-            .firstOrNull()
+            .firstOrNull { it.metadata.labels?.get(INSTANCE_ID_LABEL) == workspaceInstance.id }
         if (existingService != null) return existingService
 
         val service = Yaml.loadAs(File("/workspace-client-templates/service"), V1Service::class.java)
@@ -317,18 +384,5 @@ class WorkspaceInstancesManager(
 
     private fun getAccessControlData(): AccessControlData {
         return workspaceManager.accessControlPersistence.read()
-    }
-
-    inner class ImageUpdateTask(
-        val imageTask: WorkspaceImageTask,
-    ) : Task<Unit>(coroutinesScope) {
-        override suspend fun process() {
-            val image = imageTask.waitForOutput()
-            reconciler.updateDesiredState {
-                it.copy(
-                    images = it.images + (imageTask.workspaceConfig to image)
-                )
-            }
-        }
     }
 }

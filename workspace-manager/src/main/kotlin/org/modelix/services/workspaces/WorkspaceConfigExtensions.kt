@@ -10,7 +10,7 @@ fun WorkspaceConfig.normalizeForBuild() = copy(
     name = "",
     memoryLimit = "",
     gitRepositories = gitRepositories.map { it.copy(credentials = null) },
-    runConfig = null
+    runConfig = null,
 )
 
 fun WorkspaceConfig.hashForBuild(): String = normalizeForBuild().hash()

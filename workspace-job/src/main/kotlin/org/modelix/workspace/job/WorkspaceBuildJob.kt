@@ -39,9 +39,8 @@ import org.modelix.buildtools.PublicationDependencyGraph
 import org.modelix.buildtools.SourceModuleOwner
 import org.modelix.buildtools.newChild
 import org.modelix.buildtools.xmlToString
-import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.InternalWorkspaceConfig
-import org.modelix.workspaces.WorkspaceAndHash
+import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceProgressItems
 import org.w3c.dom.Document

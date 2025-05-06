@@ -29,7 +29,7 @@ private val LOG = mu.KotlinLogging.logger { }
 
 class WorkspaceBuildManager(
     val coroutinesScope: CoroutineScope,
-    val tokenGenerator: (InternalWorkspaceConfig) -> String
+    val tokenGenerator: (InternalWorkspaceConfig) -> String,
 ) {
 
     private val workspaceImageTasks = ReusableTasks<InternalWorkspaceConfig, WorkspaceImageTask>()
@@ -50,16 +50,15 @@ enum class TaskState {
     ACTIVE,
     CANCELLED,
     COMPLETED,
-    UNKNOWN
+    UNKNOWN,
 }
 
-class WorkspaceBaseImageTask(val mpsVersion: String, scope: CoroutineScope) : Task<ImageNameAndTag>(scope) {
+class WorkspaceBaseImageTask(val mpsVersion: String, scope: CoroutineScope) : TaskInstance<ImageNameAndTag>(scope) {
     private val resultImage = ImageNameAndTag(
         "modelix/workspace-client-baseimage",
-        "${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion"
+        "${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion",
     )
     override suspend fun process(): ImageNameAndTag {
-
         return resultImage
     }
 }
@@ -71,15 +70,15 @@ data class ImageNameAndTag(val name: String, val tag: String) {
 class WorkspaceImageTask(
     val workspaceConfig: InternalWorkspaceConfig,
     val tokenGenerator: (InternalWorkspaceConfig) -> String,
-    scope: CoroutineScope
-) : Task<ImageNameAndTag>(scope) {
+    scope: CoroutineScope,
+) : TaskInstance<ImageNameAndTag>(scope) {
     companion object {
         const val JOB_ID_LABEL = "modelix.workspace.job.id"
     }
 
     private val resultImage = ImageNameAndTag(
         "modelix-workspaces/ws${workspaceConfig.id}",
-        workspaceConfig.withHash().hash().toValidImageTag()
+        workspaceConfig.withHash().hash().toValidImageTag(),
     )
 
     override suspend fun process(): ImageNameAndTag {
@@ -89,12 +88,18 @@ class WorkspaceImageTask(
             findJob()?.let { deleteJob(it) }
             createJob()
 
+            var jobFailureConfirmations = 0
             while (true) {
                 delay(1000)
 
                 if (checkImageExists(resultImage)) break
 
-                if (findJob() == null && !checkImageExists(resultImage)) {
+                if (findJob() == null) {
+                    jobFailureConfirmations++
+                } else {
+                    jobFailureConfirmations = 0
+                }
+                if (jobFailureConfirmations > 10 && !checkImageExists(resultImage)) {
                     throw IllegalStateException("Job finished without uploading the result image")
                 }
             }
@@ -107,16 +112,17 @@ class WorkspaceImageTask(
             val yamlString = generateJobYaml()
             BatchV1Api().createNamespacedJob(
                 KUBERNETES_NAMESPACE,
-                Yaml.loadAs(yamlString, V1Job::class.java)
+                Yaml.loadAs(yamlString, V1Job::class.java),
             ).executeAsync(ContinuingCallback(it))
         }
     }
 
     private suspend fun findJob(): V1Job? {
-        return suspendCoroutine {
+        val jobs = suspendCoroutine {
             BatchV1Api().listNamespacedJob(KUBERNETES_NAMESPACE)
-                .labelSelector("$JOB_ID_LABEL=${id}").executeAsync(ContinuingCallback(it))
-        }.items.firstOrNull()
+                .executeAsync(ContinuingCallback(it))
+        }
+        return jobs.items.firstOrNull { it.metadata.labels?.get(JOB_ID_LABEL) == id.toString() }
     }
 
     private suspend fun deleteJob(job: V1Job) {
@@ -148,10 +154,15 @@ class WorkspaceImageTask(
             kind: Job
             metadata:
               name: "$jobName"
+              labels:
+                ${JOB_ID_LABEL}: $id
             spec:
               ttlSecondsAfterFinished: 60
               activeDeadlineSeconds: 3600
               template:
+                metadata:
+                  labels:
+                    ${JOB_ID_LABEL}: $id
                 spec:
                   activeDeadlineSeconds: 3600
                   tolerations:

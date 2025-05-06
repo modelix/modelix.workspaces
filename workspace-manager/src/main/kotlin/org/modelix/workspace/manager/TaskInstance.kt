@@ -3,18 +3,22 @@ package org.modelix.workspace.manager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
-import org.modelix.workspaces.InternalWorkspaceConfig
 import java.util.UUID
 
-abstract class Task<R>(val scope: CoroutineScope) {
+abstract class TaskInstance<R>(val scope: CoroutineScope) {
     val id: UUID = UUID.randomUUID()
     private var job: Deferred<R>? = null
+    private var result: Result<R>? = null
     protected abstract suspend fun process(): R
 
     @Synchronized
     fun launch(): Deferred<R> {
-        return job ?: scope.async { process() }.also { job = it }
+        return job ?: scope.async {
+            runCatching { process() }.also { result = it }.getOrThrow()
+        }.also { job = it }
     }
+
+    fun getOutput(): Result<R>? = result
 
     suspend fun waitForOutput(): R {
         return launch().await()
@@ -31,7 +35,7 @@ abstract class Task<R>(val scope: CoroutineScope) {
     }
 }
 
-class ReusableTasks<K, V : Task<*>> {
+class ReusableTasks<K, V : TaskInstance<*>> {
     private val tasks = LinkedHashMap<K, V>()
 
     fun getOrCreateTask(key: K, factory: (K) -> V): V {
@@ -43,6 +47,8 @@ class ReusableTasks<K, V : Task<*>> {
             newTask
         }
     }
+
+    fun getEntries(): Map<K, V> = synchronized(tasks) { tasks.toMap() }
 
     fun getAll(): List<V> = synchronized(tasks) { tasks.values.toList() }
 }

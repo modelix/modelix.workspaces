@@ -136,7 +136,7 @@ class ContinuingCallback<T>(val continuation: Continuation<T>) : ApiCallback<T> 
     override fun onFailure(
         ex: ApiException,
         p1: Int,
-        p2: Map<String?, List<String?>?>?
+        p2: Map<String?, List<String?>?>?,
     ) {
         continuation.resumeWith(Result.failure<T>(ex))
     }
@@ -144,7 +144,7 @@ class ContinuingCallback<T>(val continuation: Continuation<T>) : ApiCallback<T> 
     override fun onSuccess(
         returnedValue: T,
         p1: Int,
-        p2: Map<String?, List<String?>?>?
+        p2: Map<String?, List<String?>?>?,
     ) {
         continuation.resumeWith(Result.success(returnedValue))
     }

@@ -52,7 +52,7 @@ data class InternalWorkspaceConfig(
         loadUsedModulesOnly = false,
         sharedInstances = emptyList(),
         waitForIndexer = true,
-        modelSyncEnabled = false
+        modelSyncEnabled = false,
     )
 }
 

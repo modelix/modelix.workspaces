@@ -24,7 +24,6 @@ import mu.KotlinLogging
 import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.permissions.AccessControlData
 import org.modelix.authorization.permissions.PermissionParts
-import org.modelix.instancesmanager.InstanceName
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.services.workspaces.ContinuingCallback
 import org.modelix.services.workspaces.InternalWorkspaceInstanceConfig
@@ -38,6 +37,7 @@ import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import java.io.File
 import java.util.Collections
+import java.util.UUID
 import kotlin.coroutines.suspendCoroutine
 
 private val LOG = KotlinLogging.logger {}
@@ -51,9 +51,11 @@ class WorkspaceInstanceStateValues(
     var image: Result<ImageNameAndTag>? = null,
     var deployment: V1Deployment? = null,
     var pod: V1Pod? = null,
+    var enabled: Boolean = false,
 ) {
     fun deriveState(): WorkspaceInstanceState {
         return when {
+            !enabled -> WorkspaceInstanceState.DISABLED
             (deployment?.status?.readyReplicas ?: 0) >= 1 -> WorkspaceInstanceState.RUNNING
             deployment != null -> WorkspaceInstanceState.LAUNCHING
             image?.isFailure == true -> WorkspaceInstanceState.BUILD_FAILED
@@ -82,7 +84,7 @@ class WorkspaceInstancesManager(
         const val TIMEOUT_SECONDS = 10
         const val INSTANCE_ID_LABEL = "modelix.workspace.instance.id"
 
-        fun WorkspaceInstance.instanceName() = InstanceName(INSTANCE_PREFIX + id)
+        fun WorkspaceInstance.instanceName() = INSTANCE_PREFIX + id
     }
 
     init {
@@ -129,8 +131,10 @@ class WorkspaceInstancesManager(
         }
 
         for (config in instances.values) {
-            val imageTask = buildManager.getOrCreateWorkspaceImageTask(config.workspaceConfig.normalizeForBuild())
             val values = stateValues[config.instanceId] ?: continue
+            values.enabled = config.instanceConfig.enabled
+
+            val imageTask = buildManager.getOrCreateWorkspaceImageTask(config.workspaceConfig.normalizeForBuild())
             values.imageTaskState = imageTask.getState()
             values.image = imageTask.getOutput()
         }
@@ -213,12 +217,16 @@ class WorkspaceInstancesManager(
         }
     }
 
-    fun getDeployment(name: InstanceName, attempts: Int): V1Deployment? {
+    fun getTargetHost(instanceId: UUID): String {
+        return INSTANCE_PREFIX + instanceId
+    }
+
+    fun getDeployment(name: String, attempts: Int): V1Deployment? {
         val appsApi = AppsV1Api()
         var deployment: V1Deployment? = null
         for (i in 0 until attempts) {
             try {
-                deployment = appsApi.readNamespacedDeployment(name.name, KUBERNETES_NAMESPACE).execute()
+                deployment = appsApi.readNamespacedDeployment(name, KUBERNETES_NAMESPACE).execute()
             } catch (ex: ApiException) {
                 LOG.error("Failed to read deployment: $name", ex)
             }
@@ -232,12 +240,12 @@ class WorkspaceInstancesManager(
         return deployment
     }
 
-    fun getPod(deploymentName: InstanceName): V1Pod? {
+    fun getPod(deploymentName: String): V1Pod? {
         try {
             val coreApi = CoreV1Api()
             val pods = coreApi.listNamespacedPod(KUBERNETES_NAMESPACE).timeoutSeconds(TIMEOUT_SECONDS).execute()
             for (pod in pods.items) {
-                if (!pod.metadata!!.name!!.startsWith(deploymentName.name)) continue
+                if (!pod.metadata!!.name!!.startsWith(deploymentName)) continue
                 return pod
             }
         } catch (e: Exception) {
@@ -308,7 +316,7 @@ class WorkspaceInstancesManager(
 
         val deployment = Yaml.loadAs(File("/workspace-client-templates/deployment"), V1Deployment::class.java)
         deployment.metadata {
-            name(instanceName.name)
+            name(instanceName)
             putLabelsItem(INSTANCE_ID_LABEL, workspaceInstance.id)
         }
         deployment.spec {
@@ -349,7 +357,7 @@ class WorkspaceInstancesManager(
 
         val service = Yaml.loadAs(File("/workspace-client-templates/service"), V1Service::class.java)
         service.spec!!.ports!!.forEach { p: V1ServicePort -> p.nodePort(null) }
-        service.metadata!!.name(instanceName.name)
+        service.metadata!!.name(instanceName)
         service.metadata!!.putLabelsItem(INSTANCE_ID_LABEL, workspaceInstance.id)
         service.spec!!.putSelectorItem(INSTANCE_ID_LABEL, workspaceInstance.id)
         println("Creating service: ")

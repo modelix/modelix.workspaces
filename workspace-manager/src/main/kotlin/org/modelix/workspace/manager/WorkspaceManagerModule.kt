@@ -119,6 +119,7 @@ import org.modelix.authorization.requiresLogin
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
+import org.modelix.instancesmanager.DeploymentsProxy
 import org.modelix.model.persistent.HashUtil
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController
@@ -153,10 +154,10 @@ fun Application.workspaceManagerModule() {
     // val deploymentManager = DeploymentManager(manager)
     val buildManager = WorkspaceBuildManager(this, manager.workspaceJobTokenGenerator)
     val instancesManager = WorkspaceInstancesManager(manager, buildManager, coroutinesScope = this)
-    // val deploymentsProxy = DeploymentsProxy(deploymentManager)
+    val deploymentsProxy = DeploymentsProxy(instancesManager)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
-    // deploymentsProxy.startServer()
+    deploymentsProxy.startServer()
 
     install(ModelixAuthorization) {
         permissionSchema = WorkspacesPermissionSchema.SCHEMA

@@ -15,62 +15,48 @@ package org.modelix.instancesmanager
 
 import com.auth0.jwt.JWT
 import io.ktor.server.auth.jwt.JWTPrincipal
-import org.eclipse.jetty.server.Request
 import org.modelix.authorization.nullIfInvalid
+import java.util.UUID
 import javax.servlet.http.HttpServletRequest
 
 class RedirectedURL(
-    val remainingPath: String,
-    val workspaceReference: String,
-    val sharedInstanceName: String,
-    var instanceName: InstanceName?,
+    val targetPath: String,
+    val targetPort: Int,
+    val instanceId: UUID,
     val userToken: JWTPrincipal?,
+    var targetHost: String? = null,
 ) {
 
     fun getURLToRedirectTo(websocket: Boolean): String? {
         var url = (if (websocket) "ws" else "http") + "://"
-        url += if (instanceName != null) instanceName?.name else workspaceReference
-        url += if (remainingPath.startsWith("/ide")) {
-            ":5800" + remainingPath.substring("/ide".length)
-        } else if (remainingPath.startsWith("/generator")) {
-            // see https://github.com/modelix/modelix.mps-plugins/blob/bb70966087e2f41c263a7fe4d292e4722d50b9d1/mps-generator-execution-plugin/src/main/kotlin/org/modelix/mps/generator/web/GeneratorExecutionServer.kt#L78
-            ":33335" + remainingPath.substring("/generator".length)
-        } else if (remainingPath.startsWith("/diff")) {
-            // see https://github.com/modelix/modelix.mps-plugins/blob/bb70966087e2f41c263a7fe4d292e4722d50b9d1/mps-diff-plugin/src/main/kotlin/org/modelix/ui/diff/DiffServer.kt#L82
-            ":33334" + remainingPath.substring("/diff".length)
-        } else if (remainingPath.startsWith("/port/")) {
-            val matchResults = PORT_MATCHER.matchEntire(remainingPath) ?: return null
-            val portString = matchResults.groupValues[1]
-            val portNumber = portString.toInt()
-            if (portNumber > HIGHEST_VALID_PORT_NUMBER) {
-                return null
-            }
-            val pathAfterPort = matchResults.groupValues[2]
-            ":$portString$pathAfterPort"
-        } else {
-            ":33333$remainingPath"
-        }
+        url += "$targetHost:$targetPort$targetPath"
         return url
     }
 
     companion object {
-        private const val HIGHEST_VALID_PORT_NUMBER = 65535
-        private val PORT_MATCHER = Regex("/port/(\\d{1,5})(/.*)?")
-        fun redirect(baseRequest: Request?, request: HttpServletRequest): RedirectedURL? {
+        fun redirect(request: HttpServletRequest): RedirectedURL? {
             var remainingPath = request.requestURI
-            if (!remainingPath.startsWith("/")) return null
-            remainingPath = remainingPath.substring(1)
-            val workspaceReference = remainingPath.substringBefore('/')
-            remainingPath = remainingPath.substringAfter('/')
-            val sharedInstanceName = remainingPath.substringBefore('/')
-            remainingPath = remainingPath.substringAfter('/')
+            remainingPath = remainingPath.trimStart('/')
+
+            val instanceId = remainingPath.substringBefore('/').let { UUID.fromString(it) }
+            remainingPath = remainingPath.substringAfter('/', "")
+
+            if (!remainingPath.startsWith("port/")) return null
+            remainingPath = remainingPath.substringAfter("port/")
+            val port = remainingPath.substringBefore('/').toIntOrNull()?.takeIf { (0..65535).contains(it) } ?: return null
+            remainingPath = remainingPath.substringAfter('/', "")
+
             if (request.queryString != null) remainingPath += "?" + request.queryString
 
-            val userId = getUserIdFromAuthHeader(request)
-            return RedirectedURL("/" + remainingPath, workspaceReference, sharedInstanceName, null, userId)
+            return RedirectedURL(
+                targetPath = "/$remainingPath",
+                targetPort = port,
+                instanceId = instanceId,
+                userToken = getUserIdFromAuthHeader(request),
+            )
         }
 
-        fun getUserIdFromAuthHeader(request: HttpServletRequest): JWTPrincipal? {
+        private fun getUserIdFromAuthHeader(request: HttpServletRequest): JWTPrincipal? {
             val tokenString = run {
                 val headerValue: String? = request.getHeader("Authorization")
                 val prefix = "Bearer "

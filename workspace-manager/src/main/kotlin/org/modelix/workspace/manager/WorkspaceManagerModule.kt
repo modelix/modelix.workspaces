@@ -122,14 +122,15 @@ import org.modelix.gitui.gitui
 import org.modelix.instancesmanager.DeploymentsProxy
 import org.modelix.model.persistent.HashUtil
 import org.modelix.model.server.ModelServerPermissionSchema
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController.Companion.modelixMavenConnectorRoutes
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorRepositoriesController
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorRepositoriesController.Companion.modelixMavenConnectorRepositoriesRoutes
-import org.modelix.services.maven_connector.stubs.controllers.TypedApplicationCall
-import org.modelix.services.maven_connector.stubs.models.MavenConnectorConfig
-import org.modelix.services.maven_connector.stubs.models.MavenRepository
-import org.modelix.services.maven_connector.stubs.models.MavenRepositoryList
+import org.modelix.services.gitconnector.GitConnectorPlugin
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorController
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorController.Companion.modelixMavenConnectorRoutes
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorRepositoriesController
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorRepositoriesController.Companion.modelixMavenConnectorRepositoriesRoutes
+import org.modelix.services.mavenconnector.stubs.controllers.TypedApplicationCall
+import org.modelix.services.mavenconnector.stubs.models.MavenConnectorConfig
+import org.modelix.services.mavenconnector.stubs.models.MavenRepository
+import org.modelix.services.mavenconnector.stubs.models.MavenRepositoryList
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
@@ -181,6 +182,9 @@ fun Application.workspaceManagerModule() {
             val remoteHost = call.request.origin.remoteHost
             "$status: $httpMethod - $path in ${processingTimeMillis}ms [Remote host: '$remoteHost', User agent: '$userAgent']"
         }
+    }
+
+    install(GitConnectorPlugin) {
     }
 
     routing {

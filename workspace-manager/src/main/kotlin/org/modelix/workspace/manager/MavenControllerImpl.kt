@@ -4,18 +4,18 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorArtifactsController
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorArtifactsController.Companion.modelixMavenConnectorArtifactsRoutes
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController.Companion.modelixMavenConnectorRoutes
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorRepositoriesController
-import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorRepositoriesController.Companion.modelixMavenConnectorRepositoriesRoutes
-import org.modelix.services.maven_connector.stubs.controllers.TypedApplicationCall
-import org.modelix.services.maven_connector.stubs.models.MavenArtifact
-import org.modelix.services.maven_connector.stubs.models.MavenArtifactList
-import org.modelix.services.maven_connector.stubs.models.MavenConnectorConfig
-import org.modelix.services.maven_connector.stubs.models.MavenRepository
-import org.modelix.services.maven_connector.stubs.models.MavenRepositoryList
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorArtifactsController
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorArtifactsController.Companion.modelixMavenConnectorArtifactsRoutes
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorController
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorController.Companion.modelixMavenConnectorRoutes
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorRepositoriesController
+import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorRepositoriesController.Companion.modelixMavenConnectorRepositoriesRoutes
+import org.modelix.services.mavenconnector.stubs.controllers.TypedApplicationCall
+import org.modelix.services.mavenconnector.stubs.models.MavenArtifact
+import org.modelix.services.mavenconnector.stubs.models.MavenArtifactList
+import org.modelix.services.mavenconnector.stubs.models.MavenConnectorConfig
+import org.modelix.services.mavenconnector.stubs.models.MavenRepository
+import org.modelix.services.mavenconnector.stubs.models.MavenRepositoryList
 
 class MavenControllerImpl :
     ModelixMavenConnectorController,

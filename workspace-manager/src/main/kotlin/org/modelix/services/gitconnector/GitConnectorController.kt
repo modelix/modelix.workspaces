@@ -13,12 +13,17 @@ import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRe
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesController.Companion.modelixGitConnectorRepositoriesRoutes
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesDraftsController
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesDraftsController.Companion.modelixGitConnectorRepositoriesDraftsRoutes
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesFetchController
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesFetchController.Companion.modelixGitConnectorRepositoriesFetchRoutes
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesStatusController
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesStatusController.Companion.modelixGitConnectorRepositoriesStatusRoutes
 import org.modelix.services.gitconnector.stubs.controllers.TypedApplicationCall
 import org.modelix.services.gitconnector.stubs.models.DraftConfig
 import org.modelix.services.gitconnector.stubs.models.DraftConfigList
 import org.modelix.services.gitconnector.stubs.models.GitRemoteConfig
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfig
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfigList
+import org.modelix.services.gitconnector.stubs.models.GitRepositoryStatusData
 import org.modelix.services.workspaces.FileSystemPersistence
 import org.modelix.services.workspaces.PersistedState
 import java.io.File
@@ -44,10 +49,11 @@ data class GitConnectorData(
 )
 
 val GitConnectorPlugin = createRouteScopedPlugin(name = "gitConnector", createConfiguration = ::GitConnectorConfig) {
-    (route ?: application.routing({})).installControllers(pluginConfig)
+    val manager = GitConnectorManager(application, pluginConfig.data.state)
+    (route ?: application.routing({})).installControllers(manager, pluginConfig)
 }
 
-private fun Route.installControllers(pluginConfig: GitConnectorConfig) {
+private fun Route.installControllers(manager: GitConnectorManager, pluginConfig: GitConnectorConfig) {
     modelixGitConnectorRepositoriesRoutes(object : ModelixGitConnectorRepositoriesController {
         override suspend fun listGitRepositories(call: TypedApplicationCall<GitRepositoryConfigList>) {
             call.respondTyped(GitRepositoryConfigList(pluginConfig.getState().repositories.values.toList()).maskCredentials())
@@ -75,13 +81,14 @@ private fun Route.installControllers(pluginConfig: GitConnectorConfig) {
 
         override suspend fun getGitRepository(
             repositoryId: String,
+            includeStatus: Boolean?,
             call: TypedApplicationCall<GitRepositoryConfig>,
         ) {
             val repo = pluginConfig.getState().repositories[repositoryId]
             if (repo == null) {
                 call.respond(HttpStatusCode.NotFound)
             } else {
-                call.respondTyped(repo.maskCredentials())
+                call.respondTyped(repo.maskCredentials().copy(status = if (includeStatus == true) repo.status else null))
             }
         }
 
@@ -166,6 +173,25 @@ private fun Route.installControllers(pluginConfig: GitConnectorConfig) {
             } else {
                 call.respondTyped(draft)
             }
+        }
+    })
+
+    modelixGitConnectorRepositoriesFetchRoutes(object : ModelixGitConnectorRepositoriesFetchController {
+        override suspend fun triggerGitFetch(
+            repositoryId: String,
+            call: ApplicationCall,
+        ) {
+            manager.triggerGitFetch(repositoryId)
+            call.respond(HttpStatusCode.OK)
+        }
+    })
+
+    modelixGitConnectorRepositoriesStatusRoutes(object : ModelixGitConnectorRepositoriesStatusController {
+        override suspend fun getGitRepositoryStatus(
+            repositoryId: String,
+            call: TypedApplicationCall<GitRepositoryStatusData>,
+        ) {
+            call.respondTyped(pluginConfig.getState().repositories[repositoryId]?.status ?: GitRepositoryStatusData())
         }
     })
 }

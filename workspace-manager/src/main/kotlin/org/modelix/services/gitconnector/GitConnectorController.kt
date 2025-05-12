@@ -9,17 +9,20 @@ import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsController
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsController.Companion.modelixGitConnectorDraftsRoutes
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesBranchesController
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesBranchesController.Companion.modelixGitConnectorRepositoriesBranchesRoutes
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesBranchesUpdateController
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesBranchesUpdateController.Companion.modelixGitConnectorRepositoriesBranchesUpdateRoutes
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesController
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesController.Companion.modelixGitConnectorRepositoriesRoutes
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesDraftsController
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesDraftsController.Companion.modelixGitConnectorRepositoriesDraftsRoutes
-import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesFetchController
-import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesFetchController.Companion.modelixGitConnectorRepositoriesFetchRoutes
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesStatusController
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesStatusController.Companion.modelixGitConnectorRepositoriesStatusRoutes
 import org.modelix.services.gitconnector.stubs.controllers.TypedApplicationCall
 import org.modelix.services.gitconnector.stubs.models.DraftConfig
 import org.modelix.services.gitconnector.stubs.models.DraftConfigList
+import org.modelix.services.gitconnector.stubs.models.GitBranchList
 import org.modelix.services.gitconnector.stubs.models.GitRemoteConfig
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfig
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfigList
@@ -55,8 +58,15 @@ val GitConnectorPlugin = createRouteScopedPlugin(name = "gitConnector", createCo
 
 private fun Route.installControllers(manager: GitConnectorManager, pluginConfig: GitConnectorConfig) {
     modelixGitConnectorRepositoriesRoutes(object : ModelixGitConnectorRepositoriesController {
-        override suspend fun listGitRepositories(call: TypedApplicationCall<GitRepositoryConfigList>) {
-            call.respondTyped(GitRepositoryConfigList(pluginConfig.getState().repositories.values.toList()).maskCredentials())
+        override suspend fun listGitRepositories(
+            includeStatus: Boolean?,
+            call: TypedApplicationCall<GitRepositoryConfigList>,
+        ) {
+            call.respondTyped(
+                GitRepositoryConfigList(pluginConfig.getState().repositories.values.toList())
+                    .maskCredentials()
+                    .maskStatus(includeStatus),
+            )
         }
 
         override suspend fun createGitRepository(
@@ -176,13 +186,32 @@ private fun Route.installControllers(manager: GitConnectorManager, pluginConfig:
         }
     })
 
-    modelixGitConnectorRepositoriesFetchRoutes(object : ModelixGitConnectorRepositoriesFetchController {
-        override suspend fun triggerGitFetch(
+    modelixGitConnectorRepositoriesBranchesRoutes(object : ModelixGitConnectorRepositoriesBranchesController {
+        override suspend fun listBranches(
             repositoryId: String,
-            call: ApplicationCall,
+            call: TypedApplicationCall<GitBranchList>,
         ) {
-            manager.triggerGitFetch(repositoryId)
-            call.respond(HttpStatusCode.OK)
+            val repository = pluginConfig.getState().repositories[repositoryId]
+            if (repository == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return
+            }
+            call.respondTyped(GitBranchList(repository.status?.branches ?: emptyList()))
+        }
+    })
+
+    modelixGitConnectorRepositoriesBranchesUpdateRoutes(object : ModelixGitConnectorRepositoriesBranchesUpdateController {
+        override suspend fun updateBranches(
+            repositoryId: String,
+            call: TypedApplicationCall<GitBranchList>,
+        ) {
+            val repository = pluginConfig.getState().repositories[repositoryId]
+            if (repository == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return
+            }
+            val newBranches = manager.updateRemoteBranches(repository)
+            call.respondTyped(GitBranchList(newBranches))
         }
     })
 
@@ -228,4 +257,16 @@ fun List<GitRemoteConfig>.merge(newData: List<GitRemoteConfig>): List<GitRemoteC
             hasCredentials = newConfig.hasCredentials,
         )
     }
+}
+
+fun GitRepositoryConfigList.maskStatus(includeStatus: Boolean?): GitRepositoryConfigList {
+    if (includeStatus == true) return this
+    return copy(
+        repositories = repositories.map { it.maskStatus(includeStatus) },
+    )
+}
+
+fun GitRepositoryConfig.maskStatus(includeStatus: Boolean?): GitRepositoryConfig {
+    if (includeStatus == true) return this
+    return copy(status = null)
 }

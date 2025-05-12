@@ -114,6 +114,21 @@ class WorkspacesController(
                 )
                 call.respond(HttpStatusCode.OK)
             }
+
+            override suspend fun createWorkspace(
+                workspaceConfig: WorkspaceConfig,
+                call: TypedApplicationCall<WorkspaceConfig>,
+            ) {
+                val createdConfig = manager.newWorkspace(call.getUserName())
+                val updatedConfig = createdConfig.copy(
+                    name = workspaceConfig.name,
+                    mpsVersion = workspaceConfig.mpsVersion.takeIf { it.isNotEmpty() } ?: createdConfig.mpsVersion,
+                    memoryLimit = workspaceConfig.memoryLimit.takeIf { it.isNotEmpty() } ?: createdConfig.memoryLimit,
+                    gitRepositories = workspaceConfig.gitRepositories.map { org.modelix.workspaces.GitRepository(url = it.url) },
+                )
+                manager.update(updatedConfig)
+                call.respondTyped(updatedConfig.convert())
+            }
         })
 
         modelixWorkspacesInstancesRoutes(object : ModelixWorkspacesInstancesController {

@@ -15,16 +15,12 @@
 package org.modelix.workspace.job
 
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.appendPathSegments
-import io.ktor.http.takeFrom
 import io.ktor.util.cio.writeChannel
 import io.ktor.utils.io.copyTo
-import io.ktor.utils.io.jvm.javaio.toInputStream
 import org.modelix.buildtools.BuildScriptGenerator
 import org.modelix.buildtools.DependencyGraph
 import org.modelix.buildtools.FoundModule
@@ -40,11 +36,10 @@ import org.modelix.buildtools.SourceModuleOwner
 import org.modelix.buildtools.newChild
 import org.modelix.buildtools.xmlToString
 import org.modelix.workspaces.InternalWorkspaceConfig
-import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.WorkspaceBuildStatus
+import org.modelix.workspaces.WorkspaceConfigForBuild
 import org.modelix.workspaces.WorkspaceProgressItems
 import org.w3c.dom.Document
-import org.zeroturnaround.zip.ZipUtil
 import java.io.File
 import java.nio.file.Path
 import javax.xml.parsers.DocumentBuilderFactory
@@ -53,9 +48,8 @@ import kotlin.io.path.deleteExisting
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.io.path.walk
-import kotlin.time.Duration.Companion.minutes
 
-class WorkspaceBuildJob(val workspace: InternalWorkspaceConfig, val httpClient: HttpClient, val serverUrl: String) {
+class WorkspaceBuildJob(val workspace: WorkspaceConfigForBuild, val httpClient: HttpClient, val serverUrl: String) {
     private val workspaceDir = File(".").canonicalFile
     val progressItems = WorkspaceProgressItems()
 
@@ -70,21 +64,22 @@ class WorkspaceBuildJob(val workspace: InternalWorkspaceConfig, val httpClient: 
         }
 
     private suspend fun copyUploads(): List<File> {
-        return workspace.uploads.map { UploadId(it) }.map { uploadId ->
-            LOG.info { "Copying upload $uploadId" }
-            val uploadFolder = workspaceDir.resolve("uploads/${uploadId.id}")
-            val data = httpClient.get {
-                url {
-                    takeFrom(serverUrl)
-                    appendPathSegments("uploads", uploadId.id)
-                }
-                timeout {
-                    requestTimeoutMillis = 2.minutes.inWholeMilliseconds
-                }
-            }.bodyAsChannel()
-            ZipUtil.unpack(data.toInputStream(), uploadFolder)
-            uploadFolder
-        }
+        return emptyList()
+//        return workspace.uploads.map { UploadId(it) }.map { uploadId ->
+//            LOG.info { "Copying upload $uploadId" }
+//            val uploadFolder = workspaceDir.resolve("uploads/${uploadId.id}")
+//            val data = httpClient.get {
+//                url {
+//                    takeFrom(serverUrl)
+//                    appendPathSegments("uploads", uploadId.id)
+//                }
+//                timeout {
+//                    requestTimeoutMillis = 2.minutes.inWholeMilliseconds
+//                }
+//            }.bodyAsChannel()
+//            ZipUtil.unpack(data.toInputStream(), uploadFolder)
+//            uploadFolder
+//        }
     }
 
     private fun cloneGitRepositories(): List<File> {
@@ -97,7 +92,7 @@ class WorkspaceBuildJob(val workspace: InternalWorkspaceConfig, val httpClient: 
     }
 
     private fun copyMavenDependencies(): List<File> {
-        return workspace.mavenDependencies.map { mavenDep ->
+        return workspace.mavenArtifacts.map { mavenDep ->
             LOG.info { "Resolving $mavenDep" }
             MavenDownloader(workspace, workspaceDir).downloadAndCopyFromMaven(mavenDep) { println(it) }
         }
@@ -258,3 +253,9 @@ suspend fun HttpClient.downloadFile(file: File, url: String) {
         data.copyTo(file.writeChannel())
     }
 }
+
+fun WorkspaceConfigForBuild.additionalGenerationDependenciesAsMap() = additionalGenerationDependencies
+    .map { ModuleId(it.first) to ModuleId(it.second) }
+    .groupBy { it.first }
+    .mapValues { it.value.map { it.second }.toSet() }
+    .toMap()

@@ -28,6 +28,7 @@ data class InternalWorkspaceConfig(
     val mpsVersion: String? = null,
     val memoryLimit: String = "2Gi",
     val modelRepositories: List<ModelRepository> = listOf(),
+    val gitRepositoryIds: List<String>? = null,
     val gitRepositories: List<GitRepository> = listOf(),
     val mavenRepositories: List<MavenRepository> = listOf(),
     val mavenDependencies: List<String> = listOf(),

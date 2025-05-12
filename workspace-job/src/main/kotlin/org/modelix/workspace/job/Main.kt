@@ -27,8 +27,8 @@ import io.ktor.http.appendPathSegments
 import io.ktor.http.takeFrom
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
-import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceBuildStatus
+import org.modelix.workspaces.WorkspaceConfigForBuild
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
 
@@ -58,7 +58,7 @@ fun main(args: Array<String>) {
 
         runBlocking {
             printNewJobStatus(WorkspaceBuildStatus.Running)
-            val workspace: InternalWorkspaceConfig = httpClient.get {
+            val workspace: WorkspaceConfigForBuild = httpClient.get {
                 url {
                     takeFrom(serverUrl)
                     appendPathSegments("modelix", "workspaces", "tasks", buildTaskId.toString(), "config")

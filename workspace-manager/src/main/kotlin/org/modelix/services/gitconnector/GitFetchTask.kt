@@ -11,8 +11,7 @@ import org.modelix.workspace.manager.TaskInstance
 
 class GitFetchTask(scope: CoroutineScope, val repo: GitRepositoryConfig) : TaskInstance<FetchResult>(scope) {
     override suspend fun process(): FetchResult {
-        val oldBranchStatusMap: Map<Pair<String?, String?>, GitBranchStatusData> = (repo.status?.branches ?: emptyList()).associateBy { it.key() }
-        val newBranchStatusMap = mutableMapOf<Pair<String?, String?>, GitBranchStatusData>()
+        val fetchedBranches = ArrayList<FetchedBranch>()
 
         for (remoteConfig in (repo.remotes ?: emptyList())) {
             val cmd = Git.lsRemoteRepository()
@@ -31,23 +30,17 @@ class GitFetchTask(scope: CoroutineScope, val repo: GitRepositoryConfig) : TaskI
             for (ref in refs) {
                 if (!ref.name.startsWith("refs/heads/")) continue
                 val branchName = ref.name.removePrefix("refs/heads/")
-                val branchKey = remoteConfig.name to branchName
-                val branchStatus = oldBranchStatusMap[branchKey] ?: GitBranchStatusData()
-                newBranchStatusMap[branchKey] = branchStatus.copy(
-                    gitCommitHash = ref.objectId.name,
+                fetchedBranches.add(
+                    FetchedBranch(
+                        remoteName = remoteConfig.name,
+                        branchName = branchName,
+                        commitHash = ref.objectId.name,
+                    ),
                 )
             }
         }
 
-        return FetchResult(
-            remoteRefs = newBranchStatusMap.map {
-                FetchedBranch(
-                    remoteName = it.key.first ?: "",
-                    branchName = it.key.second ?: "",
-                    commitHash = it.value.gitCommitHash ?: "",
-                )
-            },
-        )
+        return FetchResult(remoteRefs = fetchedBranches)
     }
 }
 
@@ -65,7 +58,7 @@ private fun GitBranchStatusData.key() = remoteRepositoryName to name
 
 fun GitRepositoryConfig.merge(newRefs: List<FetchedBranch>): GitRepositoryConfig {
     val oldBranchStatusMap = (status?.branches ?: emptyList()).associateBy { it.key() }
-    val newBranchStatusMap = mutableMapOf<Pair<String?, String?>, GitBranchStatusData>()
+    val newBranchStatusMap = mutableMapOf<Pair<String, String>, GitBranchStatusData>()
     for (ref in newRefs) {
         val branchKey = ref.remoteName to ref.branchName
         val branchStatus = oldBranchStatusMap[branchKey]
@@ -76,7 +69,7 @@ fun GitRepositoryConfig.merge(newRefs: List<FetchedBranch>): GitRepositoryConfig
     }
     return copy(
         status = (status ?: GitRepositoryStatusData()).copy(
-            branches = newBranchStatusMap.values.toList().sortedBy { it.name },
+            branches = newBranchStatusMap.values.toList().sortedWith { a, b -> (a.name).compareTo(b.name, ignoreCase = true) },
         ),
     )
 }

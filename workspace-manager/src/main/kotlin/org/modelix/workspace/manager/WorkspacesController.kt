@@ -8,13 +8,8 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.util.encodeBase64
 import io.kubernetes.client.custom.Quantity
-import org.modelix.authorization.NoPermissionException
-import org.modelix.authorization.checkPermission
-import org.modelix.authorization.getUnverifiedJwt
 import org.modelix.authorization.getUserName
-import org.modelix.services.workspaces.InternalWorkspaceInstanceConfig
-import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesDraftsController
-import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesDraftsController.Companion.modelixWorkspacesDraftsRoutes
+import org.modelix.services.gitconnector.GitConnectorManager
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesController
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesController.Companion.modelixWorkspacesInstancesRoutes
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesInstancesEnabledController
@@ -28,11 +23,6 @@ import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesTasksC
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesWorkspacesController
 import org.modelix.services.workspaces.stubs.controllers.ModelixWorkspacesWorkspacesController.Companion.modelixWorkspacesWorkspacesRoutes
 import org.modelix.services.workspaces.stubs.controllers.TypedApplicationCall
-import org.modelix.services.workspaces.stubs.models.GitChangeDraft
-import org.modelix.services.workspaces.stubs.models.GitChangeDraftList
-import org.modelix.services.workspaces.stubs.models.GitCredentials
-import org.modelix.services.workspaces.stubs.models.GitRepository
-import org.modelix.services.workspaces.stubs.models.MavenArtifact
 import org.modelix.services.workspaces.stubs.models.WorkspaceConfig
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstance
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceEnabled
@@ -41,11 +31,8 @@ import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceState
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceStateObject
 import org.modelix.services.workspaces.stubs.models.WorkspaceList
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
-import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.DEFAULT_MPS_VERSION
-import org.modelix.workspaces.GenerationDependency
-import org.modelix.workspaces.InternalWorkspaceConfig
-import org.modelix.workspaces.MavenRepository
+import org.modelix.workspaces.WorkspaceConfigForBuild
 import org.modelix.workspaces.WorkspaceProgressItems
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import java.util.UUID
@@ -54,9 +41,8 @@ class WorkspacesController(
     val manager: WorkspaceManager,
     val instancesManager: WorkspaceInstancesManager,
     val buildManager: WorkspaceBuildManager,
+    val gitConnectorManager: GitConnectorManager,
 ) {
-
-    private val drafts: GitChangeDraftList = GitChangeDraftList(emptyList())
 
     fun install(route: Route) {
         route.install_()
@@ -68,20 +54,16 @@ class WorkspacesController(
                 workspaceId: String,
                 call: TypedApplicationCall<WorkspaceConfig>,
             ) {
-                val workspace = manager.getWorkspaceForId(workspaceId)
+                val workspace = manager.getWorkspace(workspaceId)
                 if (workspace == null) {
                     call.respond(HttpStatusCode.NotFound)
                 } else {
-                    call.respondTyped(workspace.workspace.convert())
+                    call.respondTyped(workspace)
                 }
             }
 
             override suspend fun listWorkspaces(call: TypedApplicationCall<WorkspaceList>) {
-                call.respondTyped(
-                    WorkspaceList(
-                        workspaces = manager.getAllWorkspaces().map { it.convert() },
-                    ),
-                )
+                call.respondTyped(WorkspaceList(workspaces = manager.getAllWorkspaces()))
             }
 
             override suspend fun deleteWorkspace(
@@ -94,25 +76,27 @@ class WorkspacesController(
 
             override suspend fun updateWorkspace(
                 workspaceId: String,
-                legacyWorkspaceConfig: WorkspaceConfig,
+                workspaceConfig: WorkspaceConfig,
                 call: ApplicationCall,
             ) {
-                val oldConfig = manager.getWorkspaceForId(workspaceId)?.workspace
-                    ?: manager.newWorkspace(owner = call.getUserName())
-                manager.update(
-                    oldConfig.copy(
-                        name = legacyWorkspaceConfig.name,
-                        mpsVersion = legacyWorkspaceConfig.mpsVersion,
-                        memoryLimit = legacyWorkspaceConfig.memoryLimit,
-                        gitRepositories = legacyWorkspaceConfig.gitRepositories.map {
-                            org.modelix.workspaces.GitRepository(it.url, null)
-                        },
-                        mavenRepositories = (legacyWorkspaceConfig.mavenRepositories ?: emptyList()).map {
-                            MavenRepository(it.url)
-                        },
-                    ),
-                )
+                manager.updateWorkspace(workspaceId) { oldConfig ->
+                    workspaceConfig.copy(id = workspaceId)
+                }
                 call.respond(HttpStatusCode.OK)
+            }
+
+            override suspend fun createWorkspace(
+                workspaceConfig: WorkspaceConfig,
+                call: TypedApplicationCall<WorkspaceConfig>,
+            ) {
+                val newWorkspace = workspaceConfig.copy(
+                    id = UUID.randomUUID().toString(),
+                    mpsVersion = workspaceConfig.mpsVersion.takeIf { it.isNotEmpty() } ?: DEFAULT_MPS_VERSION,
+                    memoryLimit = workspaceConfig.memoryLimit?.takeIf { it.isNotEmpty() }?.let { runCatching { Quantity(it).toSuffixedString() }.getOrNull() } ?: "2Gi",
+                )
+                manager.putWorkspace(newWorkspace)
+                call.getUserName()?.let { manager.assignOwner(newWorkspace.id, it) }
+                call.respondTyped(newWorkspace)
             }
         })
 
@@ -121,18 +105,18 @@ class WorkspacesController(
                 instanceId: String,
                 call: TypedApplicationCall<WorkspaceInstance>,
             ) {
-                val instance = instancesManager.getInstancesList().find { it.instanceConfig.id == instanceId }
+                val instance = instancesManager.getInstancesMap()[instanceId]
                 if (instance == null) {
                     call.respond(HttpStatusCode.NotFound)
                 } else {
-                    call.respondTyped(instance.instanceConfig)
+                    call.respondTyped(instance)
                 }
             }
 
             override suspend fun listInstances(workspaceId: String?, call: TypedApplicationCall<WorkspaceInstanceList>) {
-                val allInstances = instancesManager.getInstancesList()
+                val allInstances = instancesManager.getInstancesMap().values
                 val filteredInstances = if (workspaceId != null) {
-                    allInstances.filter { it.workspaceConfig.id == workspaceId }
+                    allInstances.filter { it.config.id == workspaceId }
                 } else {
                     allInstances
                 }
@@ -140,7 +124,7 @@ class WorkspacesController(
                 call.respondTyped(
                     WorkspaceInstanceList(
                         instances = filteredInstances.map {
-                            it.instanceConfig.copy(state = states[it.instanceConfig.id]?.deriveState() ?: WorkspaceInstanceState.UNKNOWN)
+                            it.copy(state = states[it.id]?.deriveState() ?: WorkspaceInstanceState.UNKNOWN)
                         },
                     ),
                 )
@@ -164,33 +148,24 @@ class WorkspacesController(
                     }
                 }
 
-                val workspaceConfig = manager.getWorkspaceForId(workspaceInstance.config.id)?.workspace
-                if (workspaceConfig == null) {
-                    call.respond(HttpStatusCode.NotFound, "Workspace ${workspaceInstance.config.id} not found")
-                    return
+                val id = UUID.randomUUID().toString()
+                instancesManager.updateInstancesMap { instances ->
+                    instances.plus(id to workspaceInstance.copy(
+                        id = id,
+                        owner = call.getUserName(),
+                        state = WorkspaceInstanceState.CREATED,
+                        readonly = readonly,
+                    ))
                 }
-
-                instancesManager.updateInstancesList { list ->
-                    list.filter { it.instanceId != workspaceInstance.id } + InternalWorkspaceInstanceConfig(
-                        instanceConfig = workspaceInstance.copy(
-                            id = UUID.randomUUID().toString(),
-                            drafts = emptyList(),
-                            owner = call.getUserName(),
-                            state = WorkspaceInstanceState.CREATED,
-                            readonly = readonly,
-                        ),
-                        workspaceConfig = workspaceConfig.merge(workspaceInstance.config),
-                    )
-                }
+                call.respondTyped(instancesManager.getInstancesMap().getValue(id))
             }
 
             override suspend fun deleteInstance(
                 instanceId: String,
                 call: ApplicationCall,
             ) {
-                instancesManager.updateInstancesList { list ->
-                    list.filter { it.instanceId != instanceId }
-                }
+                instancesManager.updateInstancesMap { it - instanceId }
+                call.respond(HttpStatusCode.OK)
             }
         })
 
@@ -200,38 +175,10 @@ class WorkspacesController(
                 workspaceInstanceEnabled: WorkspaceInstanceEnabled,
                 call: ApplicationCall,
             ) {
-                instancesManager.updateInstancesList { list ->
-                    list.map {
-                        if (it.instanceId == instanceId) {
-                            it.copy(
-                                instanceConfig = it.instanceConfig.copy(
-                                    enabled = workspaceInstanceEnabled.enabled,
-                                ),
-                            )
-                        } else {
-                            it
-                        }
-                    }
+                instancesManager.updateInstancesMap { instances ->
+                    instances.plus(instanceId to instances.getValue(instanceId).copy(enabled = workspaceInstanceEnabled.enabled))
                 }
                 call.respond(HttpStatusCode.OK)
-            }
-        })
-
-        modelixWorkspacesDraftsRoutes(object : ModelixWorkspacesDraftsController {
-            override suspend fun getDraft(
-                draftId: String,
-                call: TypedApplicationCall<GitChangeDraft>,
-            ) {
-                val draft = drafts.drafts.find { it.id == draftId }
-                if (draft == null) {
-                    call.respond(HttpStatusCode.NotFound)
-                } else {
-                    call.respondTyped(draft)
-                }
-            }
-
-            override suspend fun listDrafts(call: TypedApplicationCall<GitChangeDraftList>) {
-                call.respondTyped(drafts)
             }
         })
 
@@ -283,26 +230,26 @@ class WorkspacesController(
         })
     }
 
-    private suspend fun respondBuildContext(call: ApplicationCall, workspace: InternalWorkspaceConfig, taskId: UUID) {
+    private suspend fun respondBuildContext(call: ApplicationCall, workspace: WorkspaceConfigForBuild, taskId: UUID) {
         val httpProxy: String? = System.getenv("MODELIX_HTTP_PROXY")?.takeIf { it.isNotEmpty() }
 
-        call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.readCredentials)
+//        call.checkPermission(WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.readCredentials)
+//
+//        // more extensive check to ensure only the build job has access
+//        if (!run {
+//                val token = call.principal<JWTPrincipal>()?.payload ?: return@run false
+//                if (!manager.jwtUtil.isAccessToken(token)) return@run false
+//                if (call.getUnverifiedJwt()?.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
+//                true
+//            }
+//        ) {
+//            throw NoPermissionException("Only permitted to the workspace-job")
+//        }
 
-        // more extensive check to ensure only the build job has access
-        if (!run {
-                val token = call.principal<JWTPrincipal>()?.payload ?: return@run false
-                if (!manager.jwtUtil.isAccessToken(token)) return@run false
-                if (call.getUnverifiedJwt()?.keyId != manager.jwtUtil.getPrivateKey()?.keyID) return@run false
-                true
-            }
-        ) {
-            throw NoPermissionException("Only permitted to the workspace-job")
-        }
-
-        val mpsVersion = workspace.mpsVersion ?: DEFAULT_MPS_VERSION
+        val mpsVersion = workspace.mpsVersion
         val jwtToken = manager.workspaceJobTokenGenerator(workspace)
 
-        val containerMemoryBytes = Quantity.fromString(workspace.memoryLimit).number
+        val containerMemoryBytes = workspace.memoryLimit.toBigDecimal()
         var maxHeapSizeBytes = heapSizeFromContainerLimit(containerMemoryBytes)
         val maxHeapSizeMega = (maxHeapSizeBytes / 1024.toBigDecimal() / 1024.toBigDecimal()).toBigInteger()
 
@@ -369,20 +316,19 @@ class WorkspacesController(
                         val dir = "/mps-projects/workspace-${workspace.id}/git/$index/"
     
                         // https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Linux#use-a-pat
-                        val authHeader = git.credentials?.let {
-                            manager.credentialsEncryption.decrypt(it)
-                        }?.let {
-                            """ -c http.extraheader="Authorization: Basic ${(it.user + ":" + it.password).encodeBase64()}""""
+                        val authHeader = git.password?.let {
+                            """ -c http.extraheader="Authorization: Basic ${(git.username.orEmpty() + ":" + git.password).encodeBase64()}""""
                         } ?: ""
     
                         listOf(
                             "mkdir -p $dir",
                             "cd $dir",
-                            "git$authHeader clone ${git.url}",
+                            "git$authHeader clone \"${git.url}\"",
                             "cd *",
-                            "git checkout " + (git.commitHash ?: ("origin/" + git.branch)),
+                            "git checkout -b \"${git.branch}\" \"${git.commitHash}\"",
+                            "git branch --set-upstream-to=\"origin/${git.branch}\"",
                         )
-                    }.joinToString(" && ")
+                    }.ifEmpty { listOf("true") }.joinToString(" && ")
                 }
                 then
                   echo "### DONE build-gitClone ###"
@@ -393,70 +339,3 @@ class WorkspacesController(
         }
     }
 }
-
-fun InternalWorkspaceConfig.convert() = WorkspaceConfig(
-    id = id,
-    name = name ?: "",
-    mpsVersion = mpsVersion ?: DEFAULT_MPS_VERSION,
-    memoryLimit = memoryLimit,
-    gitRepositories = gitRepositories.map { GitRepository(it.url, null) },
-    mavenRepositories = mavenRepositories.map { org.modelix.services.workspaces.stubs.models.MavenRepository(it.url) },
-    mavenArtifacts = mavenDependencies.map {
-        val parts = it.split(":")
-        MavenArtifact(
-            groupId = parts[0],
-            artifactId = parts[1],
-            version = parts.getOrNull(2),
-        )
-    },
-)
-
-fun WorkspaceConfig.convert() = InternalWorkspaceConfig(
-    id = id,
-    name = name,
-    mpsVersion = mpsVersion,
-    memoryLimit = memoryLimit,
-    gitRepositories = gitRepositories.map { org.modelix.workspaces.GitRepository(it.url, null) },
-    mavenRepositories = mavenRepositories?.map { MavenRepository(it.url) } ?: emptyList(),
-    mavenDependencies = mavenArtifacts?.map { "${it.groupId}:${it.artifactId}:${it.version ?: "*"}" } ?: emptyList(),
-)
-
-fun InternalWorkspaceConfig.merge(other: WorkspaceConfig) = copy(
-    name = other.name.takeIf { it.isNotEmpty() } ?: name,
-    mpsVersion = other.mpsVersion.takeIf { it.isNotEmpty() } ?: mpsVersion,
-    memoryLimit = other.memoryLimit.takeIf { it.isNotEmpty() } ?: memoryLimit,
-    gitRepositories = gitRepositories.merge(other.gitRepositories),
-    mavenRepositories = (mavenRepositories.map { it.url } + other.mavenRepositories.orEmpty().map { it.url }).distinct().map { MavenRepository(it) },
-    mavenDependencies = (mavenDependencies + (other.mavenArtifacts ?: emptyList()).map { "${it.groupId}:${it.artifactId}:${it.version ?: "*"}" }).distinct(),
-    ignoredModules = (ignoredModules + other.buildConfig?.ignoredModules.orEmpty()).distinct(),
-    additionalGenerationDependencies = (additionalGenerationDependencies + other.buildConfig?.additionalGenerationDependencies.orEmpty().map { it.convert() }).distinct(),
-    loadUsedModulesOnly = other.runConfig?.loadUsedModulesOnly ?: loadUsedModulesOnly,
-)
-
-fun List<org.modelix.workspaces.GitRepository>.merge(other: List<GitRepository>): List<org.modelix.workspaces.GitRepository> {
-    val oldEntries = associateBy { it.url }
-    val newEntries = other.associateBy { it.url }
-
-    return (oldEntries.keys + newEntries.keys).map { url ->
-        val oldEntry = oldEntries[url]
-        val newEntry = newEntries[url]
-        org.modelix.workspaces.GitRepository(
-            url = url,
-            name = oldEntry?.name,
-            branch = oldEntry?.branch ?: "master",
-            commitHash = oldEntry?.commitHash,
-            paths = oldEntry?.paths ?: emptyList(),
-            credentials = newEntry?.credentials?.convert() ?: oldEntry?.credentials,
-        )
-    }
-}
-
-fun GitCredentials.convert() = Credentials(
-    user = username,
-    password = password,
-)
-
-fun org.modelix.services.workspaces.stubs.models.GenerationDependency.convert() = GenerationDependency(
-    from = from,
-    to = to,
-)

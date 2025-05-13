@@ -34,13 +34,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.modelix.model.persistent.HashUtil
+import org.modelix.services.workspaces.stubs.models.WorkspaceConfig
 import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 
-class WorkspaceJobQueue(val tokenGenerator: (InternalWorkspaceConfig) -> String) {
+class WorkspaceJobQueue(val tokenGenerator: (WorkspaceConfig) -> String) {
 
     private val workspaceConfig2job: MutableMap<InternalWorkspaceConfig, Job> = LinkedHashMap()
     private val coroutinesScope = CoroutineScope(Dispatchers.Default)
@@ -193,7 +194,7 @@ class WorkspaceJobQueue(val tokenGenerator: (InternalWorkspaceConfig) -> String)
             val jobContainerMemoryMega = (jobContainerMemoryBytes / 1024.toBigDecimal()).toBigInteger().toBigDecimal()
             val memoryLimit = Quantity(jobContainerMemoryMega * 1024.toBigDecimal(), Quantity.Format.BINARY_SI).toSuffixedString()
 
-            val jwtToken = tokenGenerator(workspace.workspace)
+            val jwtToken = "" //tokenGenerator(workspace.workspace)
             val dockerConfigSecretName = System.getenv("DOCKER_CONFIG_SECRET_NAME")
             val dockerConfigInternalRegistrySecretName = System.getenv("DOCKER_CONFIG_INTERN_REGISTRY_SECRET_NAME")
 

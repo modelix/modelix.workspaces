@@ -15,12 +15,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import org.modelix.services.workspaces.ContinuingCallback
+import org.modelix.services.workspaces.toValidImageTag
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.JOB_IMAGE
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.KUBERNETES_NAMESPACE
-import org.modelix.workspaces.DEFAULT_MPS_VERSION
-import org.modelix.workspaces.InternalWorkspaceConfig
-import org.modelix.workspaces.withHash
+import org.modelix.workspaces.WorkspaceConfigForBuild
+import org.modelix.workspaces.hash
 import java.util.UUID
 import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Duration.Companion.minutes
@@ -29,18 +29,18 @@ private val LOG = mu.KotlinLogging.logger { }
 
 class WorkspaceBuildManager(
     val coroutinesScope: CoroutineScope,
-    val tokenGenerator: (InternalWorkspaceConfig) -> String,
+    val tokenGenerator: (WorkspaceConfigForBuild) -> String,
 ) {
 
-    private val workspaceImageTasks = ReusableTasks<InternalWorkspaceConfig, WorkspaceImageTask>()
+    private val workspaceImageTasks = ReusableTasks<WorkspaceConfigForBuild, WorkspaceImageTask>()
 
-    fun getOrCreateWorkspaceImageTask(workspaceConfig: InternalWorkspaceConfig): WorkspaceImageTask {
-        return workspaceImageTasks.getOrCreateTask(workspaceConfig.normalizeForBuild()) {
+    fun getOrCreateWorkspaceImageTask(workspaceConfig: WorkspaceConfigForBuild): WorkspaceImageTask {
+        return workspaceImageTasks.getOrCreateTask(workspaceConfig) {
             WorkspaceImageTask(workspaceConfig, tokenGenerator, coroutinesScope)
         }
     }
 
-    fun getWorkspaceConfigByTaskId(taskId: UUID): InternalWorkspaceConfig? {
+    fun getWorkspaceConfigByTaskId(taskId: UUID): WorkspaceConfigForBuild? {
         return workspaceImageTasks.getAll().find { it.id == taskId }?.workspaceConfig
     }
 }
@@ -68,8 +68,8 @@ data class ImageNameAndTag(val name: String, val tag: String) {
 }
 
 class WorkspaceImageTask(
-    val workspaceConfig: InternalWorkspaceConfig,
-    val tokenGenerator: (InternalWorkspaceConfig) -> String,
+    val workspaceConfig: WorkspaceConfigForBuild,
+    val tokenGenerator: (WorkspaceConfigForBuild) -> String,
     scope: CoroutineScope,
 ) : TaskInstance<ImageNameAndTag>(scope) {
     companion object {
@@ -78,7 +78,7 @@ class WorkspaceImageTask(
 
     private val resultImage = ImageNameAndTag(
         "modelix-workspaces/ws${workspaceConfig.id}",
-        workspaceConfig.withHash().hash().toValidImageTag(),
+        workspaceConfig.hash().toValidImageTag(),
     )
 
     override suspend fun process(): ImageNameAndTag {
@@ -135,9 +135,9 @@ class WorkspaceImageTask(
     @Suppress("ktlint")
     fun generateJobYaml(): String {
         val jobName = "wsjob-$id"
-        val mpsVersion = workspaceConfig.mpsVersion?.takeIf { it.isNotEmpty() } ?: DEFAULT_MPS_VERSION
+        val mpsVersion = workspaceConfig.mpsVersion
 
-        val containerMemoryBytes = Quantity.fromString(workspaceConfig.memoryLimit).number
+        val containerMemoryBytes = workspaceConfig.memoryLimit.toBigDecimal()
         val baseImageBytes = BASE_IMAGE_MAX_HEAP_SIZE_MEGA.toBigDecimal() * 1024.toBigDecimal() * 1024.toBigDecimal()
         val heapSizeBytes = heapSizeFromContainerLimit(containerMemoryBytes).coerceAtLeast(baseImageBytes)
         val additionalJobMemoryBytes = Quantity.fromString("1Gi").number

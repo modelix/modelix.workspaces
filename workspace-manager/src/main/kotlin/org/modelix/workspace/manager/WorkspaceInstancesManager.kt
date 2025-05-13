@@ -25,15 +25,14 @@ import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.permissions.AccessControlData
 import org.modelix.authorization.permissions.PermissionParts
 import org.modelix.model.server.ModelServerPermissionSchema
+import org.modelix.services.gitconnector.GitConnectorManager
 import org.modelix.services.workspaces.ContinuingCallback
-import org.modelix.services.workspaces.InternalWorkspaceInstanceConfig
+import org.modelix.services.workspaces.configForBuild
 import org.modelix.services.workspaces.executeSuspending
 import org.modelix.services.workspaces.metadata
 import org.modelix.services.workspaces.spec
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstance
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceState
-import org.modelix.workspaces.WorkspaceAndHash
-import org.modelix.workspaces.WorkspaceHash
 import org.modelix.workspaces.WorkspacesPermissionSchema
 import java.io.File
 import java.util.Collections
@@ -43,7 +42,7 @@ import kotlin.coroutines.suspendCoroutine
 private val LOG = KotlinLogging.logger {}
 
 private data class InstancesManagerState(
-    val instances: List<InternalWorkspaceInstanceConfig> = emptyList(),
+    val instances: Map<String, WorkspaceInstance> = emptyMap(),
 )
 
 class WorkspaceInstanceStateValues(
@@ -75,6 +74,7 @@ class WorkspaceInstanceStateValues(
 class WorkspaceInstancesManager(
     val workspaceManager: WorkspaceManager,
     val buildManager: WorkspaceBuildManager,
+    val gitManager: GitConnectorManager,
     val coroutinesScope: CoroutineScope = CoroutineScope(Dispatchers.Default),
 ) {
     companion object {
@@ -107,19 +107,18 @@ class WorkspaceInstancesManager(
         reconcileJob.cancel("disposed")
     }
 
-    fun updateInstancesList(updater: (List<InternalWorkspaceInstanceConfig>) -> List<InternalWorkspaceInstanceConfig>) {
+    fun updateInstancesMap(updater: (Map<String, WorkspaceInstance>) -> Map<String, WorkspaceInstance>) {
         reconciler.updateDesiredState {
             it.copy(instances = updater(it.instances))
         }
     }
 
-    fun getInstancesList(): List<InternalWorkspaceInstanceConfig> = reconciler.getDesiredState().instances
+    fun getInstancesMap(): Map<String, WorkspaceInstance> = reconciler.getDesiredState().instances
 
     suspend fun getInstanceStates(): Map<String, WorkspaceInstanceStateValues> {
         val managerState = reconciler.getDesiredState()
 
-        val instances: Map<String, InternalWorkspaceInstanceConfig> =
-            managerState.instances.associateBy { it.instanceId }
+        val instances: Map<String, WorkspaceInstance> = managerState.instances
         val stateValues = instances.keys.associateWith { WorkspaceInstanceStateValues() }
 
         for ((instanceId, deployment) in getExistingDeployments()) {
@@ -131,10 +130,10 @@ class WorkspaceInstancesManager(
         }
 
         for (config in instances.values) {
-            val values = stateValues[config.instanceId] ?: continue
-            values.enabled = config.instanceConfig.enabled
+            val values = stateValues[config.id] ?: continue
+            values.enabled = config.enabled
 
-            val imageTask = buildManager.getOrCreateWorkspaceImageTask(config.workspaceConfig.normalizeForBuild())
+            val imageTask = buildManager.getOrCreateWorkspaceImageTask(config.configForBuild(gitManager))
             values.imageTaskState = imageTask.getState()
             values.image = imageTask.getOutput()
         }
@@ -177,7 +176,7 @@ class WorkspaceInstancesManager(
     private suspend fun reconcile(newState: InstancesManagerState) {
         val appsApi = AppsV1Api()
         val coreApi = CoreV1Api()
-        val expectedInstances = newState.instances.filter { it.instanceConfig.enabled }.associateBy { it.instanceConfig.id }
+        val expectedInstances = newState.instances.filter { it.value.enabled }
         val existingInstances = getExistingDeployments()
 
         val toAdd = expectedInstances - existingInstances.keys
@@ -199,16 +198,16 @@ class WorkspaceInstancesManager(
         }
         for (instance in toAdd.values) {
             try {
-                val workspaceConfig = instance.workspaceConfig
-                buildManager.getOrCreateWorkspaceImageTask(workspaceConfig.normalizeForBuild())
-                val imageTask = buildManager.getOrCreateWorkspaceImageTask(workspaceConfig.normalizeForBuild()).also { it.launch() }
+                val workspaceConfig = instance.configForBuild(gitManager)
+                buildManager.getOrCreateWorkspaceImageTask(workspaceConfig)
+                val imageTask = buildManager.getOrCreateWorkspaceImageTask(workspaceConfig).also { it.launch() }
                 val image = imageTask.getOutput()?.getOrNull()
                 if (image != null) {
-                    createDeployment(instance.instanceConfig, image)
-                    createService(instance.instanceConfig)
+                    createDeployment(instance, image)
+                    createService(instance)
                 }
             } catch (e: Exception) {
-                LOG.error("Failed to create deployment for workspace instance ${instance.instanceConfig.id}", e)
+                LOG.error("Failed to create deployment for workspace instance ${instance.id}", e)
             }
         }
 
@@ -381,12 +380,6 @@ class WorkspaceInstancesManager(
             if (requests != null) requests["memory"] = memoryLimit
         } catch (ex: Exception) {
             LOG.error("Failed to configure the deployment for the workspace ${workspaceInstance.config.id}", ex)
-        }
-    }
-
-    private fun getWorkspaceByHash(hash: WorkspaceHash): WorkspaceAndHash {
-        return requireNotNull(workspaceManager.getWorkspaceForHash(hash)) {
-            "Workspace not found: $hash"
         }
     }
 

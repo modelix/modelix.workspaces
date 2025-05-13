@@ -2,10 +2,8 @@ package org.modelix.services.gitconnector
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
-import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsController
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsController.Companion.modelixGitConnectorDraftsRoutes
@@ -27,23 +25,8 @@ import org.modelix.services.gitconnector.stubs.models.GitRemoteConfig
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfig
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfigList
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryStatusData
-import org.modelix.services.workspaces.FileSystemPersistence
-import org.modelix.services.workspaces.PersistedState
-import java.io.File
+import org.modelix.workspace.manager.SharedMutableState
 import java.util.UUID
-
-class GitConnectorConfig {
-    val data: PersistedState<GitConnectorData> = PersistedState(
-        persistence = FileSystemPersistence(
-            file = File("/workspace-manager/config/git-connector.json"),
-            serializer = GitConnectorData.serializer(),
-        ),
-        defaultState = { GitConnectorData() },
-    )
-
-    fun getState(): GitConnectorData = data.state.getValue()
-    fun updateState(updater: (GitConnectorData) -> GitConnectorData) = data.state.update(updater)
-}
 
 @Serializable
 data class GitConnectorData(
@@ -51,178 +34,184 @@ data class GitConnectorData(
     val drafts: Map<String, DraftConfig> = emptyMap(),
 )
 
-val GitConnectorPlugin = createRouteScopedPlugin(name = "gitConnector", createConfiguration = ::GitConnectorConfig) {
-    val manager = GitConnectorManager(application, pluginConfig.data.state)
-    (route ?: application.routing({})).installControllers(manager, pluginConfig)
-}
+class GitConnectorController(val manager: GitConnectorManager) {
 
-private fun Route.installControllers(manager: GitConnectorManager, pluginConfig: GitConnectorConfig) {
-    modelixGitConnectorRepositoriesRoutes(object : ModelixGitConnectorRepositoriesController {
-        override suspend fun listGitRepositories(
-            includeStatus: Boolean?,
-            call: TypedApplicationCall<GitRepositoryConfigList>,
-        ) {
-            call.respondTyped(
-                GitRepositoryConfigList(pluginConfig.getState().repositories.values.toList())
-                    .maskCredentials()
-                    .maskStatus(includeStatus),
-            )
-        }
+    private val data: SharedMutableState<GitConnectorData> get() = manager.connectorData
 
-        override suspend fun createGitRepository(
-            gitRepositoryConfig: GitRepositoryConfig,
-            call: TypedApplicationCall<GitRepositoryConfig>,
-        ) {
-            val newId = UUID.randomUUID().toString()
-            val newRepository = gitRepositoryConfig.copy(
-                id = newId,
-                status = null,
-                modelixRepository = newId,
-            )
+    fun install(route: Route) {
+        route.install_()
+    }
 
-            pluginConfig.updateState {
-                it.copy(
-                    repositories = it.repositories + (newRepository.id to newRepository),
+    private fun Route.install_() {
+        modelixGitConnectorRepositoriesRoutes(object : ModelixGitConnectorRepositoriesController {
+            override suspend fun listGitRepositories(
+                includeStatus: Boolean?,
+                call: TypedApplicationCall<GitRepositoryConfigList>,
+            ) {
+                call.respondTyped(
+                    GitRepositoryConfigList(data.getValue().repositories.values.toList())
+                        .maskCredentials()
+                        .maskStatus(includeStatus),
                 )
             }
 
-            call.respondTyped(newRepository.maskCredentials())
-        }
+            override suspend fun createGitRepository(
+                gitRepositoryConfig: GitRepositoryConfig,
+                call: TypedApplicationCall<GitRepositoryConfig>,
+            ) {
+                val newId = UUID.randomUUID().toString()
+                val newRepository = gitRepositoryConfig.copy(
+                    id = newId,
+                    status = null,
+                    modelixRepository = newId,
+                )
 
-        override suspend fun getGitRepository(
-            repositoryId: String,
-            includeStatus: Boolean?,
-            call: TypedApplicationCall<GitRepositoryConfig>,
-        ) {
-            val repo = pluginConfig.getState().repositories[repositoryId]
-            if (repo == null) {
-                call.respond(HttpStatusCode.NotFound)
-            } else {
-                call.respondTyped(repo.maskCredentials().copy(status = if (includeStatus == true) repo.status else null))
+                data.update {
+                    it.copy(
+                        repositories = it.repositories + (newRepository.id to newRepository),
+                    )
+                }
+
+                call.respondTyped(newRepository.maskCredentials())
             }
-        }
 
-        override suspend fun updateGitRepository(
-            repositoryId: String,
-            gitRepositoryConfig: GitRepositoryConfig,
-            call: ApplicationCall,
-        ) {
-            pluginConfig.updateState {
-                val mergedConfig = it.repositories[repositoryId].merge(gitRepositoryConfig)
-                it.copy(
-                    repositories = it.repositories + (repositoryId to mergedConfig),
+            override suspend fun getGitRepository(
+                repositoryId: String,
+                includeStatus: Boolean?,
+                call: TypedApplicationCall<GitRepositoryConfig>,
+            ) {
+                val repo = data.getValue().repositories[repositoryId]
+                if (repo == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                } else {
+                    call.respondTyped(repo.maskCredentials().copy(status = if (includeStatus == true) repo.status else null))
+                }
+            }
+
+            override suspend fun updateGitRepository(
+                repositoryId: String,
+                gitRepositoryConfig: GitRepositoryConfig,
+                call: ApplicationCall,
+            ) {
+                data.update {
+                    val mergedConfig = it.repositories[repositoryId].merge(gitRepositoryConfig)
+                    it.copy(
+                        repositories = it.repositories + (repositoryId to mergedConfig),
+                    )
+                }
+
+                call.respond(HttpStatusCode.OK)
+            }
+
+            override suspend fun deleteGitRepository(
+                repositoryId: String,
+                call: ApplicationCall,
+            ) {
+                data.update {
+                    it.copy(
+                        repositories = it.repositories - repositoryId,
+                    )
+                }
+
+                call.respond(HttpStatusCode.OK)
+            }
+        })
+
+        modelixGitConnectorRepositoriesDraftsRoutes(object : ModelixGitConnectorRepositoriesDraftsController {
+            override suspend fun listDraftsInRepository(
+                repositoryId: String,
+                call: TypedApplicationCall<DraftConfigList>,
+            ) {
+                call.respondTyped(
+                    DraftConfigList(
+                        data.getValue().drafts.values.filter { it.gitRepositoryId == repositoryId },
+                    ),
                 )
             }
 
-            call.respond(HttpStatusCode.OK)
-        }
-
-        override suspend fun deleteGitRepository(
-            repositoryId: String,
-            call: ApplicationCall,
-        ) {
-            pluginConfig.updateState {
-                it.copy(
-                    repositories = it.repositories - repositoryId,
+            override suspend fun createDraftInRepository(
+                repositoryId: String,
+                draftConfig: DraftConfig,
+                call: TypedApplicationCall<DraftConfig>,
+            ) {
+                val draftId = UUID.randomUUID().toString()
+                val branch = manager.getRepository(repositoryId)?.status?.branches?.find { it.name == draftConfig.gitBranchName }
+                val newDraft = draftConfig.copy(
+                    id = draftId,
+                    gitRepositoryId = repositoryId,
+                    baseGitCommit = draftConfig.baseGitCommit.takeIf { it.isNotEmpty() } ?: branch?.gitCommitHash ?: "",
+                    modelixBranchName = "drafts/$draftId",
                 )
+                data.update {
+                    it.copy(
+                        drafts = it.drafts + (draftId to newDraft),
+                    )
+                }
+                call.respondTyped(newDraft)
+            }
+        })
+
+        modelixGitConnectorDraftsRoutes(object : ModelixGitConnectorDraftsController {
+            override suspend fun deleteDraft(draftId: String, call: ApplicationCall) {
+                data.update {
+                    it.copy(
+                        drafts = it.drafts - draftId,
+                    )
+                }
+                call.respond(HttpStatusCode.OK)
             }
 
-            call.respond(HttpStatusCode.OK)
-        }
-    })
-
-    modelixGitConnectorRepositoriesDraftsRoutes(object : ModelixGitConnectorRepositoriesDraftsController {
-        override suspend fun listDraftsInRepository(
-            repositoryId: String,
-            call: TypedApplicationCall<DraftConfigList>,
-        ) {
-            call.respondTyped(
-                DraftConfigList(
-                    pluginConfig.getState().drafts.values.filter { it.gitRepositoryId == repositoryId },
-                ),
-            )
-        }
-
-        override suspend fun createDraftInRepository(
-            repositoryId: String,
-            draftConfig: DraftConfig,
-            call: TypedApplicationCall<DraftConfig>,
-        ) {
-            val draftId = UUID.randomUUID().toString()
-            val newDraft = draftConfig.copy(
-                id = draftId,
-                gitRepositoryId = repositoryId,
-                modelixBranchName = "drafts/$draftId",
-            )
-            pluginConfig.updateState {
-                it.copy(
-                    drafts = it.drafts + (draftId to newDraft),
-                )
+            override suspend fun getDraft(
+                draftId: String,
+                call: TypedApplicationCall<DraftConfig>,
+            ) {
+                val draft = data.getValue().drafts[draftId]
+                if (draft == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                } else {
+                    call.respondTyped(draft)
+                }
             }
-            call.respondTyped(newDraft)
-        }
-    })
+        })
 
-    modelixGitConnectorDraftsRoutes(object : ModelixGitConnectorDraftsController {
-        override suspend fun deleteDraft(draftId: String, call: ApplicationCall) {
-            pluginConfig.updateState {
-                it.copy(
-                    drafts = it.drafts - draftId,
-                )
+        modelixGitConnectorRepositoriesBranchesRoutes(object : ModelixGitConnectorRepositoriesBranchesController {
+            override suspend fun listBranches(
+                repositoryId: String,
+                call: TypedApplicationCall<GitBranchList>,
+            ) {
+                val repository = data.getValue().repositories[repositoryId]
+                if (repository == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return
+                }
+                call.respondTyped(GitBranchList(repository.status?.branches ?: emptyList()))
             }
-            call.respond(HttpStatusCode.OK)
-        }
+        })
 
-        override suspend fun getDraft(
-            draftId: String,
-            call: TypedApplicationCall<DraftConfig>,
-        ) {
-            val draft = pluginConfig.getState().drafts[draftId]
-            if (draft == null) {
-                call.respond(HttpStatusCode.NotFound)
-            } else {
-                call.respondTyped(draft)
+        modelixGitConnectorRepositoriesBranchesUpdateRoutes(object : ModelixGitConnectorRepositoriesBranchesUpdateController {
+            override suspend fun updateBranches(
+                repositoryId: String,
+                call: TypedApplicationCall<GitBranchList>,
+            ) {
+                val repository = data.getValue().repositories[repositoryId]
+                if (repository == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return
+                }
+                val newBranches = manager.updateRemoteBranches(repository)
+                call.respondTyped(GitBranchList(newBranches))
             }
-        }
-    })
+        })
 
-    modelixGitConnectorRepositoriesBranchesRoutes(object : ModelixGitConnectorRepositoriesBranchesController {
-        override suspend fun listBranches(
-            repositoryId: String,
-            call: TypedApplicationCall<GitBranchList>,
-        ) {
-            val repository = pluginConfig.getState().repositories[repositoryId]
-            if (repository == null) {
-                call.respond(HttpStatusCode.NotFound)
-                return
+        modelixGitConnectorRepositoriesStatusRoutes(object : ModelixGitConnectorRepositoriesStatusController {
+            override suspend fun getGitRepositoryStatus(
+                repositoryId: String,
+                call: TypedApplicationCall<GitRepositoryStatusData>,
+            ) {
+                call.respondTyped(data.getValue().repositories[repositoryId]?.status ?: GitRepositoryStatusData())
             }
-            call.respondTyped(GitBranchList(repository.status?.branches ?: emptyList()))
-        }
-    })
-
-    modelixGitConnectorRepositoriesBranchesUpdateRoutes(object : ModelixGitConnectorRepositoriesBranchesUpdateController {
-        override suspend fun updateBranches(
-            repositoryId: String,
-            call: TypedApplicationCall<GitBranchList>,
-        ) {
-            val repository = pluginConfig.getState().repositories[repositoryId]
-            if (repository == null) {
-                call.respond(HttpStatusCode.NotFound)
-                return
-            }
-            val newBranches = manager.updateRemoteBranches(repository)
-            call.respondTyped(GitBranchList(newBranches))
-        }
-    })
-
-    modelixGitConnectorRepositoriesStatusRoutes(object : ModelixGitConnectorRepositoriesStatusController {
-        override suspend fun getGitRepositoryStatus(
-            repositoryId: String,
-            call: TypedApplicationCall<GitRepositoryStatusData>,
-        ) {
-            call.respondTyped(pluginConfig.getState().repositories[repositoryId]?.status ?: GitRepositoryStatusData())
-        }
-    })
+        })
+    }
 }
 
 fun GitRepositoryConfigList.maskCredentials() = copy(

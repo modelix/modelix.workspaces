@@ -22,7 +22,6 @@ import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.forms.submitForm
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
@@ -39,8 +38,13 @@ import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.principal
 import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.staticResources
+import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.calllogging.processingTimeMillis
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.origin
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respond
@@ -115,17 +119,23 @@ import org.modelix.authorization.requiresLogin
 import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
 import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
 import org.modelix.gitui.gitui
-import org.modelix.instancesmanager.DeploymentManager
 import org.modelix.instancesmanager.DeploymentsProxy
-import org.modelix.instancesmanager.adminModule
 import org.modelix.model.persistent.HashUtil
 import org.modelix.model.server.ModelServerPermissionSchema
+import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController
+import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorController.Companion.modelixMavenConnectorRoutes
+import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorRepositoriesController
+import org.modelix.services.maven_connector.stubs.controllers.ModelixMavenConnectorRepositoriesController.Companion.modelixMavenConnectorRepositoriesRoutes
+import org.modelix.services.maven_connector.stubs.controllers.TypedApplicationCall
+import org.modelix.services.maven_connector.stubs.models.MavenConnectorConfig
+import org.modelix.services.maven_connector.stubs.models.MavenRepository
+import org.modelix.services.maven_connector.stubs.models.MavenRepositoryList
 import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.SharedInstance
 import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.Workspace
 import org.modelix.workspaces.WorkspaceAndHash
 import org.modelix.workspaces.WorkspaceBuildStatus
 import org.modelix.workspaces.WorkspaceHash
@@ -141,8 +151,10 @@ import java.util.zip.ZipOutputStream
 fun Application.workspaceManagerModule() {
     val credentialsEncryption = createCredentialEncryption()
     val manager = WorkspaceManager(credentialsEncryption)
-    val deploymentManager = DeploymentManager(manager)
-    val deploymentsProxy = DeploymentsProxy(deploymentManager)
+    // val deploymentManager = DeploymentManager(manager)
+    val buildManager = WorkspaceBuildManager(this, manager.workspaceJobTokenGenerator)
+    val instancesManager = WorkspaceInstancesManager(manager, buildManager, coroutinesScope = this)
+    val deploymentsProxy = DeploymentsProxy(instancesManager)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
 
     deploymentsProxy.startServer()
@@ -157,12 +169,63 @@ fun Application.workspaceManagerModule() {
         json()
     }
 
+    install(CallLogging) {
+        format { call ->
+            // Resemble the default format but include remote host and user agent for easier tracing on who issued a certain request.
+            // INFO  ktor.application - 200 OK: GET - /public/modelix-base.css in 60ms
+            val status = call.response.status()
+            val httpMethod = call.request.httpMethod.value
+            val userAgent = call.request.headers["User-Agent"]
+            val processingTimeMillis = call.processingTimeMillis()
+            val path = call.request.path()
+            val remoteHost = call.request.origin.remoteHost
+            "$status: $httpMethod - $path in ${processingTimeMillis}ms [Remote host: '$remoteHost', User agent: '$userAgent']"
+        }
+    }
+
     routing {
         staticResources("static/", basePackage = "org.modelix.workspace.static")
 
-        route("instances") {
-            this.adminModule(deploymentManager)
-        }
+//        route("instances") {
+//            this.adminModule(deploymentManager)
+//        }
+
+        MavenControllerImpl().install(this)
+        WorkspacesController(manager, instancesManager, buildManager).install(this)
+
+        modelixMavenConnectorRoutes(object : ModelixMavenConnectorController {
+            override suspend fun getMavenConnectorConfig(call: TypedApplicationCall<MavenConnectorConfig>) {
+                TODO("Not yet implemented")
+            }
+        })
+
+        modelixMavenConnectorRepositoriesRoutes(object : ModelixMavenConnectorRepositoriesController {
+            override suspend fun deleteMavenRepository(
+                repositoryId: String,
+                call: ApplicationCall,
+            ) {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun listMavenRepositories(call: TypedApplicationCall<MavenRepositoryList>) {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun getMavenRepository(
+                repositoryId: String,
+                call: TypedApplicationCall<MavenRepository>,
+            ) {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun updateMavenRepository(
+                repositoryId: String,
+                mavenRepository: MavenRepository,
+                call: ApplicationCall,
+            ) {
+                TODO("Not yet implemented")
+            }
+        })
 
         requiresLogin {
             get("/") {
@@ -772,7 +835,7 @@ fun Application.workspaceManagerModule() {
                         return@post
                     }
                     val uncheckedWorkspaceConfig = try {
-                        Yaml.default.decodeFromString<Workspace>(yamlText)
+                        Yaml.default.decodeFromString<InternalWorkspaceConfig>(yamlText)
                     } catch (e: Exception) {
                         call.respond(HttpStatusCode.BadRequest, e.message ?: "Parse error")
                         return@post
@@ -1008,7 +1071,7 @@ fun Application.workspaceManagerModule() {
                             ENV modelix_workspace_id=${workspace.id}  
                             ENV modelix_workspace_hash=${workspace.hash()}   
                             ENV modelix_workspace_server=http://${HELM_PREFIX}workspace-manager:28104/      
-                            ENV INITIAL_JWT_TOKEN=$jwtToken  
+                            ENV INITIAL_JWT_TOKEN=$jwtToken
                             
                             RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
                             
@@ -1235,11 +1298,11 @@ fun Application.workspaceManagerModule() {
 
     install(CORS) {
         anyHost()
+        anyMethod()
+        allowOrigins { true }
         allowHeader(HttpHeaders.ContentType)
-        allowMethod(HttpMethod.Options)
-        allowMethod(HttpMethod.Get)
-        allowMethod(HttpMethod.Put)
-        allowMethod(HttpMethod.Post)
+        allowHeader(HttpHeaders.AccessControlAllowOrigin)
+        allowHeader(HttpHeaders.Authorization)
     }
 }
 
@@ -1291,7 +1354,7 @@ suspend fun ApplicationCall.respondTarGz(body: (TarArchiveOutputStream) -> Unit)
     }
 }
 
-fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: Workspace, existingWorkspaceConfig: Workspace): Workspace =
+fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: InternalWorkspaceConfig, existingWorkspaceConfig: InternalWorkspaceConfig): InternalWorkspaceConfig =
     mergeMaskedCredentialsWithPreviousCredentials(receivedWorkspaceConfig, existingWorkspaceConfig)
         .copy(
             // set ID just in case the user copy-pastes a workspace and forgets to change the ID
@@ -1301,7 +1364,7 @@ fun sanitizeReceivedWorkspaceConfig(receivedWorkspaceConfig: Workspace, existing
 
 const val MASKED_CREDENTIAL_VALUE = "••••••••"
 
-fun Workspace.maskCredentials(): Workspace {
+fun InternalWorkspaceConfig.maskCredentials(): InternalWorkspaceConfig {
     val gitRepositories = this.gitRepositories.map { repository ->
         repository.copy(
             credentials = repository.credentials?.copy(
@@ -1314,9 +1377,9 @@ fun Workspace.maskCredentials(): Workspace {
 }
 
 fun mergeMaskedCredentialsWithPreviousCredentials(
-    receivedWorkspaceConfig: Workspace,
-    existingWorkspaceConfig: Workspace,
-): Workspace {
+    receivedWorkspaceConfig: InternalWorkspaceConfig,
+    existingWorkspaceConfig: InternalWorkspaceConfig,
+): InternalWorkspaceConfig {
     val gitRepositories = receivedWorkspaceConfig.gitRepositories.mapIndexed { i, receivedRepository ->
         // Credentials will be reused, when:
         // * When the URL is the same,
@@ -1377,7 +1440,7 @@ private fun FlowOrInteractiveOrPhrasingContent.buildPermissionManagementLink(res
     }
 }
 
-private fun TarArchiveOutputStream.putFile(name: String, content: ByteArray) {
+fun TarArchiveOutputStream.putFile(name: String, content: ByteArray) {
     putArchiveEntry(TarArchiveEntry(name).also { it.size = content.size.toLong() })
     write(content)
     closeArchiveEntry()

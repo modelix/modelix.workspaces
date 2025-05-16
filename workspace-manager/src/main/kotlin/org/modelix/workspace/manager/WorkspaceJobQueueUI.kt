@@ -1,6 +1,5 @@
 package org.modelix.workspace.manager
 
-import io.ktor.server.application.call
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.routing.Route

@@ -14,29 +14,16 @@
 
 package org.modelix.workspace.manager
 
-import com.charleskorn.kaml.Yaml
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.expectSuccess
-import io.ktor.client.request.bearerAuth
-import io.ktor.client.request.forms.submitForm
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.content.PartData
-import io.ktor.http.content.forEachPart
-import io.ktor.http.content.streamProvider
 import io.ktor.http.encodeURLPathPart
 import io.ktor.http.parameters
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.application.install
-import io.ktor.server.auth.jwt.JWTPrincipal
-import io.ktor.server.auth.principal
-import io.ktor.server.html.respondHtml
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.calllogging.processingTimeMillis
@@ -45,83 +32,28 @@ import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
-import io.ktor.server.request.receiveMultipart
-import io.ktor.server.request.receiveParameters
-import io.ktor.server.response.respond
 import io.ktor.server.response.respondOutputStream
-import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
-import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
-import io.ktor.server.routing.intercept
-import io.ktor.server.routing.post
-import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
-import io.ktor.util.encodeBase64
 import io.kubernetes.client.custom.Quantity
-import kotlinx.html.DIV
 import kotlinx.html.FlowOrInteractiveOrPhrasingContent
-import kotlinx.html.FormEncType
-import kotlinx.html.FormMethod
 import kotlinx.html.HTML
 import kotlinx.html.HTMLTag
-import kotlinx.html.InputType
 import kotlinx.html.a
-import kotlinx.html.b
 import kotlinx.html.body
-import kotlinx.html.br
-import kotlinx.html.code
 import kotlinx.html.div
-import kotlinx.html.form
-import kotlinx.html.h1
-import kotlinx.html.h2
-import kotlinx.html.head
-import kotlinx.html.hiddenInput
 import kotlinx.html.html
 import kotlinx.html.i
-import kotlinx.html.img
-import kotlinx.html.input
-import kotlinx.html.li
-import kotlinx.html.link
-import kotlinx.html.meta
-import kotlinx.html.p
-import kotlinx.html.postForm
-import kotlinx.html.pre
-import kotlinx.html.span
 import kotlinx.html.stream.createHTML
 import kotlinx.html.style
-import kotlinx.html.submitInput
 import kotlinx.html.svg
-import kotlinx.html.table
-import kotlinx.html.td
-import kotlinx.html.textArea
-import kotlinx.html.th
-import kotlinx.html.thead
-import kotlinx.html.title
-import kotlinx.html.tr
-import kotlinx.html.ul
-import kotlinx.html.unsafe
 import kotlinx.html.visit
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
-import org.apache.commons.io.FileUtils
 import org.modelix.authorization.ModelixAuthorization
-import org.modelix.authorization.NoPermissionException
-import org.modelix.authorization.checkPermission
-import org.modelix.authorization.getUnverifiedJwt
-import org.modelix.authorization.getUserName
-import org.modelix.authorization.hasPermission
 import org.modelix.authorization.permissions.PermissionParts
-import org.modelix.authorization.permissions.PermissionSchemaBase
-import org.modelix.authorization.requiresLogin
-import org.modelix.gitui.GIT_REPO_DIR_ATTRIBUTE_KEY
-import org.modelix.gitui.MPS_INSTANCE_URL_ATTRIBUTE_KEY
-import org.modelix.gitui.gitui
 import org.modelix.instancesmanager.DeploymentsProxy
-import org.modelix.model.persistent.HashUtil
-import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.services.gitconnector.GitConnectorController
 import org.modelix.services.gitconnector.GitConnectorManager
 import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorController
@@ -132,23 +64,16 @@ import org.modelix.services.mavenconnector.stubs.controllers.TypedApplicationCal
 import org.modelix.services.mavenconnector.stubs.models.MavenConnectorConfig
 import org.modelix.services.mavenconnector.stubs.models.MavenRepository
 import org.modelix.services.mavenconnector.stubs.models.MavenRepositoryList
-import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
 import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.SharedInstance
-import org.modelix.workspaces.UploadId
 import org.modelix.workspaces.WorkspaceAndHash
-import org.modelix.workspaces.WorkspaceBuildStatus
-import org.modelix.workspaces.WorkspaceHash
-import org.modelix.workspaces.WorkspaceProgressItems
 import org.modelix.workspaces.WorkspacesPermissionSchema
-import org.zeroturnaround.zip.ZipUtil
 import java.io.BufferedOutputStream
 import java.io.File
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 
 fun Application.workspaceManagerModule() {
     val credentialsEncryption = createCredentialEncryption()
@@ -301,14 +226,14 @@ fun Application.workspaceManagerModule() {
 //                                                }
 //                                            }
 //                                            // Shadow models based UI was removed
-////                                            td {
-////                                                if (canRead) {
-////                                                    a {
-////                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/project"
-////                                                        text("Open Web Interface")
-////                                                    }
-////                                                }
-////                                            }
+// //                                            td {
+// //                                                if (canRead) {
+// //                                                    a {
+// //                                                        href = "../${workspaceInstanceUrl(workspaceAndHash)}/project"
+// //                                                        text("Open Web Interface")
+// //                                                    }
+// //                                                }
+// //                                            }
 //                                            td {
 //                                                if (canRead) {
 //                                                    a {
@@ -550,9 +475,9 @@ fun Application.workspaceManagerModule() {
 //                                    a("../${workspaceAndHash.hash().hash}/buildlog") { +"Build Log" }
 //                                }
 //                                // Shadow models based UI was removed
-////                                div("menuItem") {
-////                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/project") { +"Open Web Interface" }
-////                                }
+// //                                div("menuItem") {
+// //                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/project") { +"Open Web Interface" }
+// //                                }
 //                                div("menuItem") {
 //                                    a("../../${workspaceInstanceUrl(workspaceAndHash)}/ide/?waitForIndexer=true") { +"Open MPS" }
 //                                }

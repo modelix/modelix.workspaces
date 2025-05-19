@@ -150,12 +150,14 @@ class WorkspacesController(
 
                 val id = UUID.randomUUID().toString()
                 instancesManager.updateInstancesMap { instances ->
-                    instances.plus(id to workspaceInstance.copy(
-                        id = id,
-                        owner = call.getUserName(),
-                        state = WorkspaceInstanceState.CREATED,
-                        readonly = readonly,
-                    ))
+                    instances.plus(
+                        id to workspaceInstance.copy(
+                            id = id,
+                            owner = call.getUserName(),
+                            state = WorkspaceInstanceState.CREATED,
+                            readonly = readonly,
+                        ),
+                    )
                 }
                 call.respondTyped(instancesManager.getInstancesMap().getValue(id))
             }

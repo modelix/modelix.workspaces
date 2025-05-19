@@ -41,9 +41,10 @@ class WorkspaceManager(val credentialsEncryption: CredentialsEncryption) {
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.read.fullId,
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).config.readCredentials.fullId,
                 WorkspacesPermissionSchema.workspaces.workspace(workspace.id).buildResult.write.fullId,
-            )/* + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read.fullId }*/,
+            ), // + workspace.uploads.map { uploadId -> WorkspacesPermissionSchema.workspaces.uploads.upload(uploadId).read.fullId }
         )
     }
+
 //    val buildJobs = WorkspaceJobQueue(tokenGenerator = workspaceJobTokenGenerator)
     val kestraClient = KestraClient(jwtUtil)
 
@@ -86,9 +87,10 @@ class WorkspaceManager(val credentialsEncryption: CredentialsEncryption) {
         }
     }
 
-      fun getAllWorkspaces() = data.getValue().workspaces.values.toList()
+    fun getAllWorkspaces() = data.getValue().workspaces.values.toList()
+
 //    fun getWorkspaceIds() = workspacePersistence.getWorkspaceIds()
-      fun getWorkspace(workspaceId: String) = data.getValue().workspaces[workspaceId]
+    fun getWorkspace(workspaceId: String) = data.getValue().workspaces[workspaceId]
 //    fun getWorkspaceForHash(workspaceHash: WorkspaceHash) = workspacePersistence.getWorkspaceForHash(workspaceHash)
 //    fun newWorkspace(owner: String?): InternalWorkspaceConfig {
 //        val newWorkspace = workspacePersistence.newWorkspace()
@@ -120,4 +122,3 @@ class WorkspaceManager(val credentialsEncryption: CredentialsEncryption) {
 //        return kestraClient.enqueueGitImport(credentialsEncryption.copyWithDecryptedCredentials(workspace.workspace))["id"]!!.jsonPrimitive.content.let { listOf(it) }
 //    }
 }
-

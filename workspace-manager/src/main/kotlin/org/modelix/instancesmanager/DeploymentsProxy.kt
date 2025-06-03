@@ -13,99 +13,49 @@
  */
 package org.modelix.instancesmanager
 
-import io.kubernetes.client.openapi.ApiException
-import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.server.handler.DefaultHandler
 import org.eclipse.jetty.server.handler.HandlerList
-import org.eclipse.jetty.server.handler.HandlerWrapper
 import org.eclipse.jetty.servlet.ServletContextHandler
 import org.eclipse.jetty.servlet.ServletHolder
 import org.eclipse.jetty.websocket.api.Session
 import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest
+import org.modelix.workspace.manager.WorkspaceInstancesManager
 import java.net.URI
-import java.net.URISyntaxException
 import javax.servlet.http.HttpServletRequest
-import javax.servlet.http.HttpServletResponse
 
-class DeploymentsProxy(val manager: DeploymentManager) {
+class DeploymentsProxy(val manager: WorkspaceInstancesManager) {
     private val LOG = mu.KotlinLogging.logger {}
-
-    fun main(args: Array<String>) {
-        try {
-            startServer()
-            io.ktor.server.netty.EngineMain.main(args)
-        } catch (ex: ApiException) {
-            LOG.error("", ex)
-            LOG.error("code: " + ex.code)
-            LOG.error("body: " + ex.responseBody)
-        } catch (ex: Exception) {
-            LOG.error("", ex)
-        }
-    }
 
     fun startServer() {
         val server = Server(33332)
         val handlerList = HandlerList()
         server.handler = handlerList
 
-        val deploymentManagingHandler = DeploymentManagingHandler(manager)
-        handlerList.addHandler(deploymentManagingHandler)
         val proxyServlet: ProxyServletWithWebsocketSupport = object : ProxyServletWithWebsocketSupport() {
             override fun dataTransferred(clientSession: Session?, proxySession: Session?) {
-                val deploymentName = InstanceName(proxySession!!.upgradeRequest.host)
-                DeploymentTimeouts.update(deploymentName)
+//                val deploymentName = InstanceName(proxySession!!.upgradeRequest.host)
+//                DeploymentTimeouts.update(deploymentName)
             }
 
             override fun redirect(request: ServletUpgradeRequest): URI? {
-                val redirectedURL = manager.redirect(null, request.httpServletRequest)
-                val urlToRedirectTo = redirectedURL?.getURLToRedirectTo(true)
-                return try {
-                    urlToRedirectTo?.let { URI(it) }
-                } catch (e: URISyntaxException) {
-                    throw RuntimeException(e)
-                }
+                val redirectedURL = RedirectedURL.redirect(request.httpServletRequest)
+                if (redirectedURL == null) return null
+                redirectedURL.targetHost = manager.getTargetHost(redirectedURL.instanceId)
+                return redirectedURL.getURLToRedirectTo(true)?.let { URI(it) }
             }
 
             override fun rewriteTarget(clientRequest: HttpServletRequest): String? {
-                val redirectedURL = manager.redirect(null, clientRequest)
-                val urlToRedirectTo = redirectedURL?.getURLToRedirectTo(false)
-                return urlToRedirectTo
+                val redirectedURL = RedirectedURL.redirect(clientRequest)
+                if (redirectedURL == null) return null
+                redirectedURL.targetHost = manager.getTargetHost(redirectedURL.instanceId)
+                return redirectedURL.getURLToRedirectTo(false)
             }
         }
-        val proxyHandlerCondition: HandlerWrapper = object : HandlerWrapper() {
-            override fun handle(target: String, baseRequest: Request, request: HttpServletRequest, response: HttpServletResponse) {
-                val redirect: RedirectedURL = manager.redirect(baseRequest, request)
-                    ?: return
-                if (redirect.userToken == null) {
-                    baseRequest.isHandled = true
-                    response.status = HttpServletResponse.SC_UNAUTHORIZED
-                    response.contentType = "text/plain"
-                    response.writer.write("Cookie with deployment ID missing. Refresh this page to send a new valid request.")
-                    return
-                }
-                //                if (!baseRequest.getRequestURI().contains("/ws/")) return;
-                super.handle(target, baseRequest, request, response)
-            }
-        }
+
         val proxyHandler = ServletContextHandler()
         proxyHandler.addServlet(ServletHolder(proxyServlet), "/*")
-        proxyHandlerCondition.handler = proxyHandler
-        handlerList.addHandler(proxyHandlerCondition)
-
-//        ProxyServlet proxyServlet = new ProxyServlet() {
-//            @Override
-//            protected String rewriteTarget(HttpServletRequest clientRequest) {
-//                RedirectedURL redirectedURL = RedirectedURL.redirect(null, clientRequest);
-//                if (redirectedURL == null) return null;
-//                return redirectedURL.getRedirectedUrl(false);
-//            }
-//        };
-//        proxyServlet.setTimeout(60_000);
-//
-//        ServletContextHandler proxyHandler = new ServletContextHandler();
-//        proxyHandler.addServlet(new ServletHolder(proxyServlet), "/*");
-//        handlerList.addHandler(proxyHandler);
+        handlerList.addHandler(proxyHandler)
         handlerList.addHandler(DefaultHandler())
         server.start()
         Runtime.getRuntime().addShutdownHook(object : Thread() {
@@ -118,8 +68,5 @@ class DeploymentsProxy(val manager: DeploymentManager) {
                 }
             }
         })
-
-        // Trigger creation of the instance so that it starts the first MPS instance
-        manager.toString()
     }
 }

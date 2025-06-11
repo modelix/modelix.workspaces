@@ -53,7 +53,9 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.modelix.authorization.ModelixAuthorization
 import org.modelix.authorization.permissions.PermissionParts
+import org.modelix.authorization.permissions.PermissionSchemaBase
 import org.modelix.instancesmanager.DeploymentsProxy
+import org.modelix.model.client2.ModelClientV2
 import org.modelix.services.gitconnector.GitConnectorController
 import org.modelix.services.gitconnector.GitConnectorManager
 import org.modelix.services.mavenconnector.stubs.controllers.ModelixMavenConnectorController
@@ -64,6 +66,7 @@ import org.modelix.services.mavenconnector.stubs.controllers.TypedApplicationCal
 import org.modelix.services.mavenconnector.stubs.models.MavenConnectorConfig
 import org.modelix.services.mavenconnector.stubs.models.MavenRepository
 import org.modelix.services.mavenconnector.stubs.models.MavenRepositoryList
+import org.modelix.services.workspaces.WorkspacesController
 import org.modelix.workspaces.Credentials
 import org.modelix.workspaces.GitRepository
 import org.modelix.workspaces.InternalWorkspaceConfig
@@ -81,7 +84,19 @@ fun Application.workspaceManagerModule() {
     // val deploymentManager = DeploymentManager(manager)
     val buildManager = WorkspaceBuildManager(this, manager.workspaceJobTokenGenerator)
     val maxBodySize = environment.config.property("modelix.maxBodySize").getString()
-    val gitManager = GitConnectorManager(this)
+    val gitManager = GitConnectorManager(
+        scope = this,
+        kestraClient = manager.kestraClient,
+        modelClient = ModelClientV2.builder()
+            .url(System.getenv("model_server_url"))
+            .lazyAndBlockingQueries()
+            .authToken {
+                manager.jwtUtil.createAccessToken(
+                    "git-connector@modelix.org",
+                    listOf(PermissionSchemaBase.cluster.admin.fullId),
+                )
+            }.build(),
+    )
     val gitController = GitConnectorController(gitManager)
     val instancesManager = WorkspaceInstancesManager(manager, buildManager, coroutinesScope = this, gitManager = gitManager)
     val deploymentsProxy = DeploymentsProxy(instancesManager)

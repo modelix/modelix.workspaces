@@ -1,4 +1,4 @@
-package org.modelix.workspace.manager
+package org.modelix.services.workspaces
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -30,7 +30,13 @@ import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceList
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceState
 import org.modelix.services.workspaces.stubs.models.WorkspaceInstanceStateObject
 import org.modelix.services.workspaces.stubs.models.WorkspaceList
-import org.modelix.workspace.manager.WorkspaceJobQueue.Companion.HELM_PREFIX
+import org.modelix.workspace.manager.WorkspaceBuildManager
+import org.modelix.workspace.manager.WorkspaceInstancesManager
+import org.modelix.workspace.manager.WorkspaceJobQueue
+import org.modelix.workspace.manager.WorkspaceManager
+import org.modelix.workspace.manager.heapSizeFromContainerLimit
+import org.modelix.workspace.manager.putFile
+import org.modelix.workspace.manager.respondTarGz
 import org.modelix.workspaces.DEFAULT_MPS_VERSION
 import org.modelix.workspaces.WorkspaceConfigForBuild
 import org.modelix.workspaces.WorkspaceProgressItems
@@ -92,7 +98,13 @@ class WorkspacesController(
                 val newWorkspace = workspaceConfig.copy(
                     id = UUID.randomUUID().toString(),
                     mpsVersion = workspaceConfig.mpsVersion.takeIf { it.isNotEmpty() } ?: DEFAULT_MPS_VERSION,
-                    memoryLimit = workspaceConfig.memoryLimit?.takeIf { it.isNotEmpty() }?.let { runCatching { Quantity(it).toSuffixedString() }.getOrNull() } ?: "2Gi",
+                    memoryLimit = workspaceConfig.memoryLimit?.takeIf { it.isNotEmpty() }?.let {
+                        runCatching {
+                            Quantity(
+                                it,
+                            ).toSuffixedString()
+                        }.getOrNull()
+                    } ?: "2Gi",
                 )
                 manager.putWorkspace(newWorkspace)
                 call.getUserName()?.let { manager.assignOwner(newWorkspace.id, it) }
@@ -258,11 +270,11 @@ class WorkspacesController(
         call.respondTarGz { tar ->
             @Suppress("ktlint")
             tar.putFile("Dockerfile", """
-                FROM ${HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
+                FROM ${WorkspaceJobQueue.HELM_PREFIX}docker-registry:5000/modelix/workspace-client-baseimage:${System.getenv("MPS_BASEIMAGE_VERSION")}-mps$mpsVersion
                 
                 ENV modelix_workspace_id=${workspace.id}  
                 ENV modelix_workspace_task_id=${taskId}   
-                ENV modelix_workspace_server=http://${HELM_PREFIX}workspace-manager:28104/      
+                ENV modelix_workspace_server=http://${WorkspaceJobQueue.HELM_PREFIX}workspace-manager:28104/      
                 ENV INITIAL_JWT_TOKEN=$jwtToken  
                 
                 RUN /etc/cont-init.d/10-init-users.sh && /etc/cont-init.d/99-set-user-home.sh
@@ -284,7 +296,7 @@ class WorkspacesController(
                 
                 RUN mkdir /config/home/job \
                     && cd /config/home/job \ 
-                    && wget -q "http://${HELM_PREFIX}workspace-manager:28104/static/workspace-job.tar" \
+                    && wget -q "http://${WorkspaceJobQueue.HELM_PREFIX}workspace-manager:28104/static/workspace-job.tar" \
                     && tar -xf workspace-job.tar \
                     && cd /mps-projects/workspace-${workspace.id} \
                     && /config/home/job/workspace-job/bin/workspace-job \

@@ -24,6 +24,7 @@ import mu.KotlinLogging
 import org.modelix.authorization.ModelixJWTUtil
 import org.modelix.authorization.permissions.AccessControlData
 import org.modelix.authorization.permissions.PermissionParts
+import org.modelix.model.lazy.BranchReference
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.services.gitconnector.GitConnectorManager
 import org.modelix.services.workspaces.ContinuingCallback
@@ -48,6 +49,7 @@ private data class InstancesManagerState(
 class WorkspaceInstanceStateValues(
     var imageTaskState: TaskState? = null,
     var image: Result<ImageNameAndTag>? = null,
+    var draftBranches: List<Result<BranchReference>?> = emptyList(),
     var deployment: V1Deployment? = null,
     var pod: V1Pod? = null,
     var enabled: Boolean = false,
@@ -58,7 +60,7 @@ class WorkspaceInstanceStateValues(
             (deployment?.status?.readyReplicas ?: 0) >= 1 -> WorkspaceInstanceState.RUNNING
             deployment != null -> WorkspaceInstanceState.LAUNCHING
             image?.isFailure == true -> WorkspaceInstanceState.BUILD_FAILED
-            image?.getOrNull() != null -> WorkspaceInstanceState.LAUNCHING
+            image?.getOrNull() != null && draftBranches.all { it?.getOrNull() != null } -> WorkspaceInstanceState.LAUNCHING
             else -> when (imageTaskState) {
                 null -> WorkspaceInstanceState.CREATED
                 TaskState.CANCELLED -> WorkspaceInstanceState.BUILD_FAILED
@@ -136,6 +138,10 @@ class WorkspaceInstancesManager(
             val imageTask = buildManager.getOrCreateWorkspaceImageTask(config.configForBuild(gitManager))
             values.imageTaskState = imageTask.getState()
             values.image = imageTask.getOutput()
+
+            values.draftBranches = config.drafts.orEmpty().map { draftId ->
+                gitManager.getOrCreateDraftPreparationTask(draftId).also { it.launch() }
+            }.map { it.getOutput() }
         }
 
         return stateValues
@@ -201,9 +207,15 @@ class WorkspaceInstancesManager(
                 val workspaceConfig = instance.configForBuild(gitManager)
                 buildManager.getOrCreateWorkspaceImageTask(workspaceConfig)
                 val imageTask = buildManager.getOrCreateWorkspaceImageTask(workspaceConfig).also { it.launch() }
+
+                val draftPreparationTasks = instance.drafts.orEmpty().map { draftId ->
+                    gitManager.getOrCreateDraftPreparationTask(draftId).also { it.launch() }
+                }
+                val draftBranches = draftPreparationTasks.map { it.getOutput()?.getOrNull() }
+
                 val image = imageTask.getOutput()?.getOrNull()
-                if (image != null) {
-                    createDeployment(instance, image)
+                if (image != null && draftBranches.all { it != null }) {
+                    createDeployment(instance, image, draftBranches.map { it!! })
                     createService(instance)
                 }
             } catch (e: Exception) {
@@ -299,6 +311,7 @@ class WorkspaceInstancesManager(
     suspend fun createDeployment(
         workspaceInstance: WorkspaceInstance,
         image: ImageNameAndTag,
+        draftBranches: List<BranchReference>,
     ): V1Deployment {
         val instanceName = workspaceInstance.instanceName()
         val workspaceId = workspaceInstance.config.id
@@ -324,17 +337,24 @@ class WorkspaceInstancesManager(
             replicas(1)
             template.spec!!.containers[0].apply {
                 addEnvItem(V1EnvVar().name("modelix_workspace_id").value(workspaceId))
-                addEnvItem(V1EnvVar().name("REPOSITORY_ID").value("workspace_$workspaceId"))
+                draftBranches.firstOrNull()?.let { draftBranch ->
+                    addEnvItem(V1EnvVar().name("REPOSITORY_ID").value(draftBranch.repositoryId.id))
+                    addEnvItem(V1EnvVar().name("REPOSITORY_BRANCH").value(draftBranch.branchName))
+                }
                 // addEnvItem(V1EnvVar().name("modelix_workspace_hash").value(workspace.hash().hash))
-                addEnvItem(V1EnvVar().name("WORKSPACE_MODEL_SYNC_ENABLED").value(false.toString()))
+                addEnvItem(V1EnvVar().name("WORKSPACE_MODEL_SYNC_ENABLED").value(true.toString()))
             }
         }
 
         val hasWritePermission = workspaceInstance.readonly == false
         val newPermissions = ArrayList<PermissionParts>()
         newPermissions += WorkspacesPermissionSchema.workspaces.workspace(workspaceId).config.read
-        newPermissions += ModelServerPermissionSchema.repository("workspace_" + workspaceId)
-            .let { if (hasWritePermission) it.write else it.read }
+        for (draft in workspaceInstance.drafts.orEmpty().mapNotNull { gitManager.getDraft(it) }) {
+            val gitRepo = gitManager.getRepository(draft.gitRepositoryId) ?: continue
+            val modelixRepo = gitRepo.modelixRepository ?: continue
+            newPermissions += ModelServerPermissionSchema.repository(modelixRepo).branch(draft.modelixBranchName)
+                .let { if (hasWritePermission) it.write else it.read }
+        }
 
         val newToken = jwtUtil.createAccessToken(workspaceInstance.owner ?: "workspace-user@modelix.org", newPermissions.map { it.fullId })
         deployment.spec!!.template.spec!!.containers[0].addEnvItem(V1EnvVar().name("INITIAL_JWT_TOKEN").value(newToken))

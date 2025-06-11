@@ -24,6 +24,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.modelix.authorization.ModelixJWTUtil
+import org.modelix.model.lazy.BranchReference
 import org.modelix.model.lazy.RepositoryId
 import org.modelix.model.server.ModelServerPermissionSchema
 import org.modelix.workspaces.InternalWorkspaceConfig
@@ -42,13 +43,17 @@ class KestraClient(val jwtUtil: ModelixJWTUtil) {
     }
 
     suspend fun getRunningImportJobIds(workspaceId: String): List<String> {
+        return getRunningImportJobIds(mapOf("workspace" to workspaceId))
+    }
+
+    suspend fun getRunningImportJobIds(labels: Map<String, String>): List<String> {
         val responseObject: JsonObject = httpClient.get {
             url {
                 takeFrom(kestraApiEndpoint)
                 appendPathSegments("executions", "search")
                 parameters.append("namespace", "modelix")
                 parameters.append("flowId", "git_import")
-                parameters.append("labels", "workspace:$workspaceId")
+                parameters.appendAll("labels", labels.map { "${it.key}:${it.value}" })
                 parameters.append("state", "CREATED")
                 parameters.append("state", "QUEUED")
                 parameters.append("state", "RUNNING")
@@ -64,15 +69,31 @@ class KestraClient(val jwtUtil: ModelixJWTUtil) {
 
     suspend fun enqueueGitImport(workspace: InternalWorkspaceConfig): JsonObject {
         val gitRepo = workspace.gitRepositories.first()
+        return enqueueGitImport(
+            gitRepoUrl = gitRepo.url,
+            gitUser = gitRepo.credentials?.user,
+            gitPassword = gitRepo.credentials?.password,
+            gitRevision = "origin/${gitRepo.branch}",
+            modelixBranch = RepositoryId("workspace_${workspace.id}").getBranchReference("git-import"),
+            labels = mapOf("workspace" to workspace.id),
+        )
+    }
 
+    suspend fun enqueueGitImport(
+        gitRepoUrl: String,
+        gitUser: String?,
+        gitPassword: String?,
+        gitRevision: String,
+        modelixBranch: BranchReference,
+        labels: Map<String, String>,
+    ): JsonObject {
         updateGitImportFlow()
 
-        val targetBranch = RepositoryId("workspace_${workspace.id}").getBranchReference("git-import")
         val token = jwtUtil.createAccessToken(
             "git-import@modelix.org",
             listOf(
-                ModelServerPermissionSchema.repository(targetBranch.repositoryId).create.fullId,
-                ModelServerPermissionSchema.branch(targetBranch).rewrite.fullId,
+                ModelServerPermissionSchema.repository(modelixBranch.repositoryId).create.fullId,
+                ModelServerPermissionSchema.branch(modelixBranch).rewrite.fullId,
             ),
         )
 
@@ -80,20 +101,21 @@ class KestraClient(val jwtUtil: ModelixJWTUtil) {
             url {
                 takeFrom(kestraApiEndpoint)
                 appendPathSegments("executions", "modelix", "git_import")
-                parameters["labels"] = "workspace:${workspace.id}"
+                if (labels.isNotEmpty()) {
+                    parameters.appendAll("labels", labels.map { "${it.key}:${it.value}" })
+                }
             }
             setBody(
                 MultiPartFormDataContent(
                     formData {
-                        append("git_url", gitRepo.url)
-                        append("git_revision", "origin/${gitRepo.branch}")
-                        append("modelix_repo_name", "workspace_${workspace.id}")
-                        append("modelix_target_branch", "git-import")
+                        append("git_url", gitRepoUrl)
+                        append("git_revision", gitRevision)
+                        append("git_limit", "50")
+                        append("modelix_repo_name", modelixBranch.repositoryId.id)
+                        append("modelix_target_branch", modelixBranch.branchName)
                         append("token", token)
-                        gitRepo.credentials?.also { credentials ->
-                            append("git_user", credentials.user)
-                            append("git_pw", credentials.password)
-                        }
+                        gitUser?.let { append("git_user", it) }
+                        gitPassword?.let { append("git_pw", it) }
                     },
                 ),
             )

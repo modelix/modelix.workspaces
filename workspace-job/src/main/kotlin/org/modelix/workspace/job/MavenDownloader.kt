@@ -17,12 +17,12 @@ import org.apache.commons.io.FileUtils
 import org.apache.maven.shared.invoker.DefaultInvocationRequest
 import org.apache.maven.shared.invoker.DefaultInvoker
 import org.apache.maven.shared.invoker.InvocationOutputHandler
-import org.modelix.workspaces.Workspace
+import org.modelix.workspaces.WorkspaceConfigForBuild
 import org.zeroturnaround.zip.ZipUtil
 import java.io.File
-import java.util.*
+import java.util.Properties
 
-class MavenDownloader(val workspace: Workspace, val workspaceDir: File) {
+class MavenDownloader(val workspace: WorkspaceConfigForBuild, val workspaceDir: File) {
 
     fun downloadAndCopyFromMaven(coordinates: String, outputHandler: ((String) -> Unit)? = null): File {
         if (workspace.mavenRepositories.isNotEmpty()) {

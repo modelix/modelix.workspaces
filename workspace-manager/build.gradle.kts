@@ -42,6 +42,7 @@ dependencies {
     implementation(libs.logback.classic)
     implementation(libs.maven.invoker)
     implementation(libs.modelix.authorization)
+    implementation(libs.ktor.server.call.logging)
     implementation(libs.modelix.model.client)
     implementation(libs.modelix.model.server) {
         isTransitive = false
@@ -49,6 +50,7 @@ dependencies {
     implementation(libs.zt.zip)
     implementation(project(":gitui"))
     implementation(project(":workspaces"))
+    implementation(libs.modelix.api.server.stubs)
     mpsPlugins(libs.bundles.modelix.mpsPlugins.all)
     mpsPlugins(project(":workspace-client-plugin", configuration = "archives"))
     runtimeOnly(libs.slf4j.simple)

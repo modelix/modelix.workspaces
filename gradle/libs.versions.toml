@@ -36,9 +36,11 @@ ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-conte
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
 ktor-server-auth = { group = "io.ktor", name = "ktor-server-auth", version.ref = "ktor" }
+ktor-server-call-logging = { group = "io.ktor", name = "ktor-server-call-logging", version.ref = "ktor" }
 ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
 ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktor" }
 ktor-server-cors = { group = "io.ktor", name = "ktor-server-cors", version.ref = "ktor" }
+ktor-server-data-conversion = { group = "io.ktor", name = "ktor-server-data-conversion", version.ref = "ktor" }
 ktor-server-html-builder = { group = "io.ktor", name = "ktor-server-html-builder", version.ref = "ktor" }
 ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktor" }
 ktor-server-status-pages = { group = "io.ktor", name = "ktor-server-status-pages", version.ref = "ktor" }
@@ -54,6 +56,7 @@ zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }
 modelix-syncPlugin3 = { group = "org.modelix.mps", name = "mps-sync-plugin3", version.ref = "modelix-core" }
 modelix-mpsPlugins-generator = { group = "org.modelix.mps", name = "generator-execution-plugin", version.ref = "modelix-mps-plugins" }
 modelix-mpsPlugins-diff = { group = "org.modelix.mps", name = "diff-plugin", version.ref = "modelix-mps-plugins" }
+modelix-api-server-stubs = { group = "org.modelix", name = "api-server-stubs-ktor", version = "1.2.0" }
 
 [bundles]
 ktor-client = [
@@ -85,3 +88,4 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 shadow = { id = "com.github.johnrengelman.shadow", version = "8.1.1" }
 jib = { id = "com.google.cloud.tools.jib", version = "3.4.5" }
+openapi-generator = {id = "org.openapi.generator", version = "7.12.0"}

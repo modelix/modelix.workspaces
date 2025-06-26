@@ -15,16 +15,12 @@
 package org.modelix.workspace.job
 
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.appendPathSegments
-import io.ktor.http.takeFrom
 import io.ktor.util.cio.writeChannel
 import io.ktor.utils.io.copyTo
-import io.ktor.utils.io.jvm.javaio.toInputStream
 import org.modelix.buildtools.BuildScriptGenerator
 import org.modelix.buildtools.DependencyGraph
 import org.modelix.buildtools.FoundModule
@@ -39,13 +35,11 @@ import org.modelix.buildtools.PublicationDependencyGraph
 import org.modelix.buildtools.SourceModuleOwner
 import org.modelix.buildtools.newChild
 import org.modelix.buildtools.xmlToString
-import org.modelix.workspaces.UploadId
-import org.modelix.workspaces.Workspace
-import org.modelix.workspaces.WorkspaceAndHash
+import org.modelix.workspaces.InternalWorkspaceConfig
 import org.modelix.workspaces.WorkspaceBuildStatus
+import org.modelix.workspaces.WorkspaceConfigForBuild
 import org.modelix.workspaces.WorkspaceProgressItems
 import org.w3c.dom.Document
-import org.zeroturnaround.zip.ZipUtil
 import java.io.File
 import java.nio.file.Path
 import javax.xml.parsers.DocumentBuilderFactory
@@ -54,9 +48,8 @@ import kotlin.io.path.deleteExisting
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.io.path.walk
-import kotlin.time.Duration.Companion.minutes
 
-class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpClient, val serverUrl: String) {
+class WorkspaceBuildJob(val workspace: WorkspaceConfigForBuild, val httpClient: HttpClient, val serverUrl: String) {
     private val workspaceDir = File(".").canonicalFile
     val progressItems = WorkspaceProgressItems()
 
@@ -71,21 +64,22 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
         }
 
     private suspend fun copyUploads(): List<File> {
-        return workspace.uploads.map { UploadId(it) }.map { uploadId ->
-            LOG.info { "Copying upload $uploadId" }
-            val uploadFolder = workspaceDir.resolve("uploads/${uploadId.id}")
-            val data = httpClient.get {
-                url {
-                    takeFrom(serverUrl)
-                    appendPathSegments("uploads", uploadId.id)
-                }
-                timeout {
-                    requestTimeoutMillis = 2.minutes.inWholeMilliseconds
-                }
-            }.bodyAsChannel()
-            ZipUtil.unpack(data.toInputStream(), uploadFolder)
-            uploadFolder
-        }
+        return emptyList()
+//        return workspace.uploads.map { UploadId(it) }.map { uploadId ->
+//            LOG.info { "Copying upload $uploadId" }
+//            val uploadFolder = workspaceDir.resolve("uploads/${uploadId.id}")
+//            val data = httpClient.get {
+//                url {
+//                    takeFrom(serverUrl)
+//                    appendPathSegments("uploads", uploadId.id)
+//                }
+//                timeout {
+//                    requestTimeoutMillis = 2.minutes.inWholeMilliseconds
+//                }
+//            }.bodyAsChannel()
+//            ZipUtil.unpack(data.toInputStream(), uploadFolder)
+//            uploadFolder
+//        }
     }
 
     private fun cloneGitRepositories(): List<File> {
@@ -98,9 +92,9 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
     }
 
     private fun copyMavenDependencies(): List<File> {
-        return workspace.mavenDependencies.map { mavenDep ->
+        return workspace.mavenArtifacts.map { mavenDep ->
             LOG.info { "Resolving $mavenDep" }
-            MavenDownloader(workspace.workspace, workspaceDir).downloadAndCopyFromMaven(mavenDep) { println(it) }
+            MavenDownloader(workspace, workspaceDir).downloadAndCopyFromMaven(mavenDep) { println(it) }
         }
     }
 
@@ -126,7 +120,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
                 buildScriptGenerator = BuildScriptGenerator(
                     modulesMiner,
                     ignoredModules = workspace.ignoredModules.map { ModuleId(it) }.toSet(),
-                    additionalGenerationDependencies = workspace.workspace.additionalGenerationDependenciesAsMap(),
+                    additionalGenerationDependencies = workspace.additionalGenerationDependenciesAsMap(),
                 )
                 runSafely {
                     modulesXml = xmlToString(buildModulesXml(buildScriptGenerator.modulesMiner.getModules()))
@@ -141,7 +135,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
             progressItems.build.deleteUnusedModules.execute {
                 // to reduce the required memory include only those modules in the zip that are actually used
                 val resolver = ModuleResolver(modulesMiner.getModules(), workspace.ignoredModules.map { ModuleId(it) }.toSet(), true)
-                val graph = PublicationDependencyGraph(resolver, workspace.workspace.additionalGenerationDependenciesAsMap())
+                val graph = PublicationDependencyGraph(resolver, workspace.additionalGenerationDependenciesAsMap())
                 graph.load(modulesMiner.getModules().getModules().values)
                 val sourceModules: Set<ModuleId> = modulesMiner.getModules().getModules()
                     .filter { it.value.owner is SourceModuleOwner }.keys -
@@ -239,7 +233,7 @@ class WorkspaceBuildJob(val workspace: WorkspaceAndHash, val httpClient: HttpCli
         }
     }
 
-    private fun Workspace.additionalGenerationDependenciesAsMap(): Map<ModuleId, Set<ModuleId>> {
+    private fun InternalWorkspaceConfig.additionalGenerationDependenciesAsMap(): Map<ModuleId, Set<ModuleId>> {
         return additionalGenerationDependencies
             .groupBy { ModuleId(it.from) }
             .mapValues { it.value.map { ModuleId(it.to) }.toSet() }
@@ -259,3 +253,9 @@ suspend fun HttpClient.downloadFile(file: File, url: String) {
         data.copyTo(file.writeChannel())
     }
 }
+
+fun WorkspaceConfigForBuild.additionalGenerationDependenciesAsMap() = additionalGenerationDependencies
+    .map { ModuleId(it.first) to ModuleId(it.second) }
+    .groupBy { it.first }
+    .mapValues { it.value.map { it.second }.toSet() }
+    .toMap()

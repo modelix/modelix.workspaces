@@ -13,7 +13,6 @@
  */
 package org.modelix.workspaces
 
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.modelix.model.client.RestWebModelClient
 import org.modelix.model.persistent.HashUtil
@@ -21,12 +20,12 @@ import org.modelix.model.persistent.SerializationUtil
 
 interface WorkspacePersistence {
     fun getWorkspaceIds(): Set<String>
-    fun newWorkspace(): Workspace
+    fun newWorkspace(): InternalWorkspaceConfig
     fun removeWorkspace(workspaceId: String)
-    fun getAllWorkspaces(): List<Workspace>
-    fun getWorkspaceForId(id: String): Workspace?
+    fun getAllWorkspaces(): List<InternalWorkspaceConfig>
+    fun getWorkspaceForId(id: String): InternalWorkspaceConfig?
     fun getWorkspaceForHash(hash: WorkspaceHash): WorkspaceAndHash?
-    fun update(workspace: Workspace): WorkspaceHash
+    fun update(workspace: InternalWorkspaceConfig): WorkspaceHash
 }
 
 class ModelServerWorkspacePersistence(authTokenProvider: () -> String?) : WorkspacePersistence {
@@ -46,8 +45,8 @@ class ModelServerWorkspacePersistence(authTokenProvider: () -> String?) : Worksp
     }
 
     @Synchronized
-    override fun newWorkspace(): Workspace {
-        val workspace = Workspace(
+    override fun newWorkspace(): InternalWorkspaceConfig {
+        val workspace = InternalWorkspaceConfig(
             id = generateId(),
             modelRepositories = listOf(ModelRepository(id = "default")),
         )
@@ -63,12 +62,12 @@ class ModelServerWorkspacePersistence(authTokenProvider: () -> String?) : Worksp
 
     private fun key(workspaceId: String) = "workspace-$workspaceId"
 
-    override fun getWorkspaceForId(id: String): Workspace? {
+    override fun getWorkspaceForId(id: String): InternalWorkspaceConfig? {
         require(id.matches(Regex("[a-f0-9]{9,16}"))) { "Invalid workspace ID: $id" }
         return getWorkspaceForIdOrHash(id)?.workspace
     }
 
-    override fun getAllWorkspaces(): List<Workspace> {
+    override fun getAllWorkspaces(): List<InternalWorkspaceConfig> {
         return getWorkspaceIds().mapNotNull { getWorkspaceForId(it) }
     }
 
@@ -95,17 +94,17 @@ class ModelServerWorkspacePersistence(authTokenProvider: () -> String?) : Worksp
                 modelClient.put(key(id), hash.toString())
             }
         }
-        return Json.decodeFromString<Workspace>(json).withHash(hash)
+        return Json.decodeFromString<InternalWorkspaceConfig>(json).withHash(hash)
     }
 
     @Synchronized
     override fun getWorkspaceForHash(hash: WorkspaceHash): WorkspaceAndHash? {
         val json = modelClient.get(hash.toString()) ?: return null
-        return Json.decodeFromString<Workspace>(json).withHash(hash)
+        return Json.decodeFromString<InternalWorkspaceConfig>(json).withHash(hash)
     }
 
     @Synchronized
-    override fun update(workspace: Workspace): WorkspaceHash {
+    override fun update(workspace: InternalWorkspaceConfig): WorkspaceHash {
         val mpsVersion = workspace.mpsVersion
         require(mpsVersion == null || mpsVersion.matches(Regex("""20\d\d\.\d"""))) {
             "Invalid major MPS version: '$mpsVersion'. Examples for valid values: '2020.3', '2021.1', '2021.2'."

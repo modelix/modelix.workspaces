@@ -47,14 +47,15 @@ private data class InstancesManagerState(
 )
 
 class WorkspaceInstanceStateValues(
-    var imageTaskState: TaskState? = null,
-    var image: Result<ImageNameAndTag>? = null,
+    var imageTask: WorkspaceImageTask? = null,
     var draftBranches: List<Result<BranchReference>?> = emptyList(),
     var deployment: V1Deployment? = null,
     var pod: V1Pod? = null,
     var enabled: Boolean = false,
 ) {
     fun deriveState(): WorkspaceInstanceState {
+        val image = imageTask?.getOutput()
+        val imageTaskState = imageTask?.getState()
         return when {
             !enabled -> WorkspaceInstanceState.DISABLED
             (deployment?.status?.readyReplicas ?: 0) >= 1 -> WorkspaceInstanceState.RUNNING
@@ -70,6 +71,33 @@ class WorkspaceInstanceStateValues(
                 TaskState.UNKNOWN -> WorkspaceInstanceState.WAITING_FOR_BUILD
             }
         }
+    }
+
+    fun statusText(): String {
+        val text = ArrayList<String>()
+
+        if (!enabled) text += "Instance is disabled."
+        if (deployment != null) text += "Deployment created."
+        if ((deployment?.status?.readyReplicas ?: 0) >= 1) text += "Pod is ready."
+        if (imageTask == null) {
+            text += "Build task not created yet."
+        } else {
+            text += "Build task state: ${imageTask?.getState()}."
+            imageTask?.getOutput()?.exceptionOrNull()?.message?.let {
+                text += it
+            }
+            if (imageTask?.getOutput()?.getOrNull() != null) {
+                text += "Image created."
+            }
+        }
+        for (draftBranchTask in draftBranches) {
+            if (draftBranchTask?.getOrNull() != null) text += "Draft branch created."
+            draftBranchTask?.exceptionOrNull()?.message?.let {
+                text += "Draft branch creation failed: $it."
+            }
+        }
+
+        return text.joinToString(" ")
     }
 }
 
@@ -136,8 +164,7 @@ class WorkspaceInstancesManager(
             values.enabled = config.enabled
 
             val imageTask = buildManager.getOrCreateWorkspaceImageTask(config.configForBuild(gitManager))
-            values.imageTaskState = imageTask.getState()
-            values.image = imageTask.getOutput()
+            values.imageTask = imageTask
 
             values.draftBranches = config.drafts.orEmpty().map { draftId ->
                 gitManager.getOrCreateDraftPreparationTask(draftId).also { it.launch() }

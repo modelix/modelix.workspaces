@@ -136,7 +136,10 @@ class WorkspacesController(
                 call.respondTyped(
                     WorkspaceInstanceList(
                         instances = filteredInstances.map {
-                            it.copy(state = states[it.id]?.deriveState() ?: WorkspaceInstanceState.UNKNOWN)
+                            it.copy(
+                                state = states[it.id]?.deriveState() ?: WorkspaceInstanceState.UNKNOWN,
+                                statusText = states[it.id]?.statusText(),
+                            )
                         },
                     ),
                 )

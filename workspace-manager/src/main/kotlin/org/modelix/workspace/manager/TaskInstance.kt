@@ -5,26 +5,33 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import java.util.UUID
 
-abstract class TaskInstance<R>(val scope: CoroutineScope) {
+interface ITaskInstance<R> {
+    fun getOutput(): Result<R>?
+    suspend fun waitForOutput(): R
+    fun getState(): TaskState
+    fun launch(): Deferred<R>
+}
+
+abstract class TaskInstance<R>(val scope: CoroutineScope) : ITaskInstance<R> {
     val id: UUID = UUID.randomUUID()
     private var job: Deferred<R>? = null
     private var result: Result<R>? = null
     protected abstract suspend fun process(): R
 
     @Synchronized
-    fun launch(): Deferred<R> {
+    override fun launch(): Deferred<R> {
         return job ?: scope.async {
             runCatching { process() }.also { result = it }.getOrThrow()
         }.also { job = it }
     }
 
-    fun getOutput(): Result<R>? = result
+    override fun getOutput(): Result<R>? = result
 
-    suspend fun waitForOutput(): R {
+    override suspend fun waitForOutput(): R {
         return launch().await()
     }
 
-    fun getState() = job.let {
+    override fun getState(): TaskState = job.let {
         when {
             it == null -> TaskState.CREATED
             it.isCompleted -> TaskState.COMPLETED
@@ -35,7 +42,7 @@ abstract class TaskInstance<R>(val scope: CoroutineScope) {
     }
 }
 
-class ReusableTasks<K, V : TaskInstance<*>> {
+class ReusableTasks<K, V : ITaskInstance<*>> {
     private val tasks = LinkedHashMap<K, V>()
 
     fun getOrCreateTask(key: K, factory: (K) -> V): V {

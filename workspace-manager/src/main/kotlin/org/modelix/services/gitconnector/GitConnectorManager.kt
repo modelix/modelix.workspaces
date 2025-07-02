@@ -54,11 +54,11 @@ class GitConnectorManager(
 
     fun getOrCreateImportTask(taskKey: GitImportTask.Key): GitImportTask {
         return importTasks.getOrCreateTask(taskKey) {
-            GitImportTask(
+            GitImportTaskUsingKubernetesJob(
                 key = taskKey,
                 scope = scope,
-                kestraClient = kestraClient,
                 modelClient = modelClient,
+                jwtUtil = kestraClient.jwtUtil,
             )
         }
     }

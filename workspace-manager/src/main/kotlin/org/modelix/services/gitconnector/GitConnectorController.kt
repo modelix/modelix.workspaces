@@ -3,10 +3,15 @@ package org.modelix.services.gitconnector
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import kotlinx.serialization.Serializable
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsController
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsController.Companion.modelixGitConnectorDraftsRoutes
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsPreparationJobController
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsPreparationJobController.Companion.modelixGitConnectorDraftsPreparationJobRoutes
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsRebaseJobController
+import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorDraftsRebaseJobController.Companion.modelixGitConnectorDraftsRebaseJobRoutes
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesBranchesController
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesBranchesController.Companion.modelixGitConnectorRepositoriesBranchesRoutes
 import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRepositoriesBranchesUpdateController
@@ -20,12 +25,15 @@ import org.modelix.services.gitconnector.stubs.controllers.ModelixGitConnectorRe
 import org.modelix.services.gitconnector.stubs.controllers.TypedApplicationCall
 import org.modelix.services.gitconnector.stubs.models.DraftConfig
 import org.modelix.services.gitconnector.stubs.models.DraftConfigList
+import org.modelix.services.gitconnector.stubs.models.DraftPreparationJob
+import org.modelix.services.gitconnector.stubs.models.DraftRebaseJob
 import org.modelix.services.gitconnector.stubs.models.GitBranchList
 import org.modelix.services.gitconnector.stubs.models.GitRemoteConfig
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfig
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfigList
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryStatusData
 import org.modelix.workspace.manager.SharedMutableState
+import org.modelix.workspace.manager.TaskState
 import java.util.UUID
 
 @Serializable
@@ -209,6 +217,91 @@ class GitConnectorController(val manager: GitConnectorManager) {
                 call: TypedApplicationCall<GitRepositoryStatusData>,
             ) {
                 call.respondTyped(data.getValue().repositories[repositoryId]?.status ?: GitRepositoryStatusData())
+            }
+        })
+
+        modelixGitConnectorDraftsRebaseJobRoutes(object : ModelixGitConnectorDraftsRebaseJobController {
+            override suspend fun getDraftRebaseJob(
+                draftId: String,
+                call: TypedApplicationCall<DraftRebaseJob>,
+            ) {
+                val draft = data.getValue().drafts[draftId]
+                if (draft == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                } else {
+                    val task = manager.getRebaseTask(draftId)
+                    if (task == null) {
+                        call.respond(HttpStatusCode.NotFound)
+                    } else {
+                        call.respondTyped(
+                            DraftRebaseJob(
+                                baseGitCommit = task.key.importTaskKey.gitRevision,
+                                gitBranchName = task.key.importTaskKey.gitBranchName,
+                                active = when (task.getState()) {
+                                    TaskState.CREATED, TaskState.ACTIVE -> true
+                                    TaskState.CANCELLED -> false
+                                    TaskState.COMPLETED -> false
+                                    TaskState.UNKNOWN -> false
+                                },
+                                errorMessage = task.getOutput()?.exceptionOrNull()?.stackTraceToString(),
+                            ),
+                        )
+                    }
+                }
+            }
+
+            override suspend fun rebaseDraft(
+                draftId: String,
+                draftRebaseJob: DraftRebaseJob,
+                call: ApplicationCall,
+            ) {
+                val draft = data.getValue().drafts[draftId]
+                if (draft == null) {
+                    call.respondText("Draft not found: $draftId", status = HttpStatusCode.NotFound)
+                } else {
+                    manager.rebaseDraft(
+                        draftId = draftId,
+                        newGitCommitId = draftRebaseJob.baseGitCommit,
+                        gitBranchName = draftRebaseJob.gitBranchName,
+                    )
+                    call.respond(HttpStatusCode.OK)
+                }
+            }
+        })
+
+        modelixGitConnectorDraftsPreparationJobRoutes(object : ModelixGitConnectorDraftsPreparationJobController {
+
+            suspend fun TypedApplicationCall<DraftPreparationJob>.respondJob(task: DraftPreparationTask) {
+                respondTyped(
+                    DraftPreparationJob(
+                        active = when (task.getState()) {
+                            TaskState.CREATED, TaskState.ACTIVE -> true
+                            TaskState.CANCELLED, TaskState.COMPLETED, TaskState.UNKNOWN -> false
+                        },
+                        errorMessage = task.getOutput()?.exceptionOrNull()?.stackTraceToString(),
+                    ),
+                )
+            }
+
+            override suspend fun getDraftBranchPreparationJob(
+                draftId: String,
+                call: TypedApplicationCall<DraftPreparationJob>,
+            ) {
+                val task = manager.draftPreparationTasks.getAll().lastOrNull { it.key.draftId == draftId }
+                if (task == null) {
+                    call.respondText("Draft not found: $draftId", status = HttpStatusCode.NotFound)
+                } else {
+                    call.respondJob(task)
+                }
+            }
+
+            override suspend fun prepareDraftBranch(
+                draftId: String,
+                draftPreparationJob: DraftPreparationJob,
+                call: TypedApplicationCall<DraftPreparationJob>,
+            ) {
+                val task = manager.getOrCreateDraftPreparationTask(draftId).also { it.launch() }
+                call.respondJob(task)
             }
         })
     }

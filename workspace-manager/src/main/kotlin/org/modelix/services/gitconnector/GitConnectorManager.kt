@@ -3,6 +3,7 @@ package org.modelix.services.gitconnector
 import kotlinx.coroutines.CoroutineScope
 import org.modelix.model.client2.IModelClientV2
 import org.modelix.model.lazy.RepositoryId
+import org.modelix.services.gitconnector.stubs.models.DraftConfig
 import org.modelix.services.gitconnector.stubs.models.GitBranchStatusData
 import org.modelix.services.gitconnector.stubs.models.GitRepositoryConfig
 import org.modelix.services.workspaces.FileSystemPersistence
@@ -26,7 +27,8 @@ class GitConnectorManager(
 ) {
 
     private val importTasks = ReusableTasks<GitImportTask.Key, GitImportTask>()
-    private val draftTasks = ReusableTasks<DraftPreparationTask.Key, DraftPreparationTask>()
+    val draftPreparationTasks = ReusableTasks<DraftPreparationTask.Key, DraftPreparationTask>()
+    private val draftRebaseTasks = ReusableTasks<DraftRebaseTask.Key, DraftRebaseTask>()
 
     fun getOrCreateImportTask(gitRepoId: String, gitBranchName: String): GitImportTask {
         val data = connectorData.getValue()
@@ -37,18 +39,26 @@ class GitConnectorManager(
         val gitRevision = requireNotNull(branch.gitCommitHash) {
             "Git commit hash for branch unknown: $gitBranchName"
         }
+        return getOrCreateImportTask(repo, gitBranchName, gitRevision)
+    }
+
+    fun getOrCreateImportTask(gitRepo: GitRepositoryConfig, gitBranchName: String, gitRevision: String): GitImportTask {
         val key = GitImportTask.Key(
-            repo = repo.copy(status = null),
+            repo = gitRepo.copy(status = null),
             gitBranchName = gitBranchName,
             gitRevision = gitRevision,
             modelixBranchName = "git-import/$gitBranchName",
         )
-        return importTasks.getOrCreateTask(key) {
-            GitImportTask(
-                key = key,
+        return getOrCreateImportTask(key)
+    }
+
+    fun getOrCreateImportTask(taskKey: GitImportTask.Key): GitImportTask {
+        return importTasks.getOrCreateTask(taskKey) {
+            GitImportTaskUsingKubernetesJob(
+                key = taskKey,
                 scope = scope,
-                kestraClient = kestraClient,
                 modelClient = modelClient,
+                jwtUtil = kestraClient.jwtUtil,
             )
         }
     }
@@ -58,7 +68,7 @@ class GitConnectorManager(
             draftId = draftId,
         )
 
-        return draftTasks.getOrCreateTask(key) {
+        return draftPreparationTasks.getOrCreateTask(key) {
             DraftPreparationTask(
                 scope = scope,
                 key = key,
@@ -84,6 +94,45 @@ class GitConnectorManager(
     }
 
     fun getDraft(id: String) = connectorData.getValue().drafts[id]
+
+    fun updateDraftConfig(draftId: String, updater: (DraftConfig) -> DraftConfig) {
+        connectorData.update { connectorData ->
+            connectorData.copy(
+                drafts = connectorData.drafts + (draftId to updater(connectorData.drafts.getValue(draftId))),
+            )
+        }
+    }
+
+    fun rebaseDraft(draftId: String, newGitCommitId: String, gitBranchName: String?): DraftRebaseTask {
+        val draft = requireNotNull(getDraft(draftId)) { "Draft not found: $draftId" }
+        val gitRepoConfig = requireNotNull(getRepository(draft.gitRepositoryId)) {
+            "Git repository config not found: ${draft.gitRepositoryId}"
+        }
+        val draftBranch = gitRepoConfig.getModelixRepositoryId().getBranchReference(draft.modelixBranchName)
+        val gitBranchName = gitBranchName ?: draft.gitBranchName
+        val key = DraftRebaseTask.Key(
+            importTaskKey = GitImportTask.Key(
+                repo = gitRepoConfig,
+                gitBranchName = gitBranchName,
+                gitRevision = newGitCommitId,
+                modelixBranchName = "git-import/$gitBranchName",
+            ),
+            draftId = draftId,
+            draftBranch = draftBranch,
+        )
+        return draftRebaseTasks.getOrCreateTask(key) {
+            DraftRebaseTask(
+                key = key,
+                scope = scope,
+                gitManager = this,
+                modelClient = modelClient,
+            )
+        }.also { it.launch() }
+    }
+
+    fun getRebaseTask(draftId: String): DraftRebaseTask? {
+        return draftRebaseTasks.getAll().lastOrNull { it.key.draftId == draftId }
+    }
 }
 
 fun GitRepositoryConfig.getModelixRepositoryId() = RepositoryId((modelixRepository ?: id))

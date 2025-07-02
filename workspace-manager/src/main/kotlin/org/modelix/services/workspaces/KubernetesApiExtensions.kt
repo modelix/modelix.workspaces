@@ -20,6 +20,9 @@ import kotlin.coroutines.suspendCoroutine
 fun KubernetesObject.metadata(body: V1ObjectMeta.() -> Unit): V1ObjectMeta {
     return (metadata ?: V1ObjectMeta().also { setMetadata(it) }).apply(body)
 }
+fun V1PodTemplateSpec.metadata(body: V1ObjectMeta.() -> Unit): V1ObjectMeta {
+    return (metadata ?: V1ObjectMeta().also { setMetadata(it) }).apply(body)
+}
 
 fun KubernetesObject.setMetadata(data: V1ObjectMeta) {
     when (this) {

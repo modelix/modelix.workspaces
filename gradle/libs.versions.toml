@@ -8,6 +8,7 @@ ktor = "3.2.1"
 logback = "1.5.18"
 modelix-core = "15.4.2"
 modelix-mps-plugins = "0.11.1"
+modelix-openapi = "1.3.0"
 
 [libraries]
 auth0-jwt = { group = "com.auth0", name = "java-jwt", version = "4.5.0" }
@@ -56,7 +57,7 @@ zt-zip = { group = "org.zeroturnaround", name = "zt-zip", version = "1.17" }
 modelix-syncPlugin3 = { group = "org.modelix.mps", name = "mps-sync-plugin3", version.ref = "modelix-core" }
 modelix-mpsPlugins-generator = { group = "org.modelix.mps", name = "generator-execution-plugin", version.ref = "modelix-mps-plugins" }
 modelix-mpsPlugins-diff = { group = "org.modelix.mps", name = "diff-plugin", version.ref = "modelix-mps-plugins" }
-modelix-api-server-stubs = { group = "org.modelix", name = "api-server-stubs-ktor", version = "1.2.0" }
+modelix-api-server-stubs = { group = "org.modelix", name = "api-server-stubs-ktor", version.ref = "modelix-openapi" }
 
 [bundles]
 ktor-client = [

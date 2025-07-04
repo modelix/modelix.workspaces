@@ -1,6 +1,7 @@
 package org.modelix.workspace.manager
 
 import io.kubernetes.client.openapi.apis.BatchV1Api
+import io.kubernetes.client.openapi.apis.CoreV1Api
 import io.kubernetes.client.openapi.models.V1Job
 import io.kubernetes.client.openapi.models.V1Toleration
 import io.kubernetes.client.util.Yaml
@@ -18,6 +19,7 @@ import kotlin.time.Duration.Companion.minutes
 abstract class KubernetesJobTask<Out : Any>(scope: CoroutineScope) : TaskInstance<Out>(scope) {
     companion object {
         const val JOB_ID_LABEL = "modelix.workspace.job.id"
+        private val LOG = mu.KotlinLogging.logger {}
     }
 
     abstract suspend fun tryGetResult(): Out?
@@ -52,8 +54,28 @@ abstract class KubernetesJobTask<Out : Any>(scope: CoroutineScope) : TaskInstanc
             }
         }
         checkNotNull(tryGetResult()) {
-            "Job finished without producing the expected result. Status: ${findJob()?.status?.let { Yaml.dump(it) }}"
+            "Job finished without producing the expected result. \nStatus: ${findJob()?.status?.let { Yaml.dump(it) }}\nPod logs:\n ${getPodLogs()}"
         }
+    }
+
+    fun getPodLogs(): String? {
+        try {
+            val coreApi = CoreV1Api()
+            val pods = coreApi.listNamespacedPod(KUBERNETES_NAMESPACE).timeoutSeconds(10).execute()
+            for (pod in pods.items) {
+                if (pod.metadata!!.labels?.get(JOB_ID_LABEL) != id.toString()) continue
+                return coreApi
+                    .readNamespacedPodLog(pod.metadata!!.name, KUBERNETES_NAMESPACE)
+                    .container(pod.spec!!.containers[0].name)
+                    .pretty("true")
+                    .tailLines(10_000)
+                    .execute()
+            }
+        } catch (e: Exception) {
+            LOG.error("", e)
+            return null
+        }
+        return null
     }
 
     private suspend fun createJob() {

@@ -3,6 +3,7 @@ package org.modelix.workspace.manager
 import io.kubernetes.client.openapi.apis.BatchV1Api
 import io.kubernetes.client.openapi.models.V1Job
 import io.kubernetes.client.openapi.models.V1Toleration
+import io.kubernetes.client.util.Yaml
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
@@ -50,7 +51,9 @@ abstract class KubernetesJobTask<Out : Any>(scope: CoroutineScope) : TaskInstanc
                 break
             }
         }
-        checkNotNull(tryGetResult()) { "Job finished without producing the expected result" }
+        checkNotNull(tryGetResult()) {
+            "Job finished without producing the expected result. Status: ${findJob()?.status?.let { Yaml.dump(it) }}"
+        }
     }
 
     private suspend fun createJob() {

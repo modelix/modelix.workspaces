@@ -5,6 +5,10 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    ignore:
+      - dependency-name: "io.kubernetes:client-java"
+        versions:
+          - "*-legacy"
   - package-ecosystem: "github-actions"
     open-pull-requests-limit: 20
     directory: "/"

@@ -1,5 +1,5 @@
 [versions]
-jetty = "9.4.57.v20241219"
+jetty = "11.0.25"
 junit = "5.13.3"
 kotlin = "2.2.0"
 kotlinx-coroutines = "1.10.2"
@@ -20,8 +20,8 @@ jasypt = { group = "org.jasypt", name = "jasypt", version = "1.9.3" }
 jetty-proxy = { group = "org.eclipse.jetty", name = "jetty-proxy", version.ref = "jetty" }
 jetty-server = { group = "org.eclipse.jetty", name = "jetty-server", version.ref = "jetty" }
 jetty-servlet = { group = "org.eclipse.jetty", name = "jetty-servlet", version.ref = "jetty" }
-jetty-websocket-client = { group = "org.eclipse.jetty.websocket", name = "websocket-client", version.ref = "jetty" }
-jetty-websocket-server = { group = "org.eclipse.jetty.websocket", name = "websocket-server", version.ref = "jetty" }
+jetty-websocket-client = { group = "org.eclipse.jetty.websocket", name = "websocket-jetty-client", version.ref = "jetty" }
+jetty-websocket-server = { group = "org.eclipse.jetty.websocket", name = "websocket-jetty-server", version.ref = "jetty" }
 jetty-websocket-servlet = { group = "org.eclipse.jetty.websocket", name = "websocket-servlet", version.ref = "jetty" }
 jgit = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version = "7.3.0.202506031305-r" }
 json = { group = "org.json", name = "json", version = "20250517" }
